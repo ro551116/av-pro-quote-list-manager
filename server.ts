@@ -114,7 +114,7 @@ async function startServer() {
     // Serve static files in production
     app.use(express.static(path.join(__dirname, 'dist')));
     // SPA fallback: non-API routes serve index.html
-    app.get('*', (req, res) => {
+    app.use((req, res) => {
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   }
