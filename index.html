@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AV Pro Quote Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              slate: {
+                50: '#fafafa',
+                100: '#f4f4f5',
+                200: '#e4e4e7',
+                300: '#d4d4d8',
+                400: '#a1a1aa',
+                500: '#71717a',
+                600: '#52525b',
+                700: '#3f3f46',
+                750: '#323238', 
+                800: '#27272a',
+                850: '#202023', 
+                900: '#18181b',
+                950: '#09090b',
+              },
+              primary: {
+                50: '#fff7ed',
+                100: '#ffedd5',
+                200: '#fed7aa',
+                300: '#fdba74',
+                400: '#fb923c',
+                500: '#f97316',
+                600: '#ea580c',
+                700: '#c2410c',
+                800: '#9a3412',
+                900: '#7c2d12',
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'Microsoft JhengHei', 'sans-serif'],
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+      @media print {
+        @page { 
+          margin: 0; 
+          size: A4 portrait; 
+        }
+        
+        html, body {
+          height: auto;
+          overflow: visible;
+        }
+
+        body * {
+          visibility: hidden;
+        }
+
+        #printable-content, #printable-content * {
+          visibility: visible;
+        }
+
+        #printable-content {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          margin: 0;
+          padding: 15mm; /* Restore padding for browser print */
+          background: white;
+          min-height: 0 !important; /* Allow auto height for print */
+        }
+
+        /* Essential for page breaks */
+        .page-break { 
+          page-break-before: always; 
+          break-before: page;
+          margin-top: 2rem;
+          display: block;
+        }
+        
+        /* Avoid breaking inside rows/tables */
+        tr { break-inside: avoid; page-break-inside: avoid; }
+        table { break-inside: auto; }
+        .break-inside-avoid { break-inside: avoid; page-break-inside: avoid; }
+        
+        .no-print { display: none !important; }
+        
+        /* Ensure colors print correctly */
+        * { 
+          -webkit-print-color-adjust: exact !important; 
+          print-color-adjust: exact !important; 
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased overflow-hidden print:overflow-visible print:h-auto">
+    <div id="root" class="h-screen w-screen flex flex-col print:h-auto print:block print:overflow-visible"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
