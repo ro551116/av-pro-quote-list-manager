@@ -1,0 +1,6 @@
+{
+  "build_type": "server_side_rendering",
+  "build_command": "npm install && npm run build",
+  "start_command": "npm start",
+  "output_dir": "dist"
+}
