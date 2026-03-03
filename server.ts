@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,9 +19,18 @@ async function startServer() {
 
   // Initialize SQLite database
   // DATA_DIR allows mounting a persistent volume (e.g. Zeabur Volume at /data)
-  const dataDir = process.env.DATA_DIR || __dirname;
+  let dataDir = process.env.DATA_DIR || __dirname;
+  // Ensure data directory exists; fallback to __dirname if it can't be created
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+  } catch {
+    console.warn(`Cannot create DATA_DIR "${dataDir}", falling back to ${__dirname}`);
+    dataDir = __dirname;
+  }
+  const dbPath = path.join(dataDir, 'database.sqlite');
+  console.log(`Opening database at: ${dbPath}`);
   const db = await open({
-    filename: path.join(dataDir, 'database.sqlite'),
+    filename: dbPath,
     driver: sqlite3.Database
   });
 
@@ -90,6 +100,81 @@ async function startServer() {
     } catch (error) {
       console.error('Failed to save project:', error);
       res.status(500).json({ error: 'Failed to save project' });
+    }
+  });
+
+  // Quick-create project via GET (for chatbot / web_fetch)
+  app.get('/api/projects/create', async (req, res) => {
+    try {
+      const q = req.query as Record<string, string>;
+      if (!q.name) {
+        return res.status(400).json({ error: 'missing required param: name' });
+      }
+      const now = Date.now();
+      const project = {
+        id: String(now),
+        name: q.name,
+        client: q.client || '',
+        date: q.date || new Date().toISOString().slice(0, 10),
+        location: q.location || '',
+        contact: q.contact || '',
+        phone: q.phone || '',
+        taxId: q.taxId || '',
+        activityTime: q.activityTime || '',
+        moveInDate: q.moveInDate || '',
+        moveOutDate: q.moveOutDate || '',
+        period: 1,
+        items: [],
+        periodCharges: [{ id: '1', label: '活動日', type: 'rate', value: 1.0 }],
+        subcontracts: [],
+        taxRate: 0.05,
+        updatedAt: now,
+      };
+      await db.run(
+        'INSERT OR REPLACE INTO projects (id, data, updatedAt) VALUES (?, ?, ?)',
+        [project.id, JSON.stringify(project), now]
+      );
+      res.json({ success: true, id: project.id });
+    } catch (error) {
+      console.error('Failed to quick-create project:', error);
+      res.status(500).json({ error: 'Failed to create project' });
+    }
+  });
+
+  // Add item to project via GET (for chatbot / web_fetch)
+  app.get('/api/projects/:id/add-item', async (req, res) => {
+    try {
+      const row = await db.get('SELECT data FROM projects WHERE id = ?', [req.params.id]);
+      if (!row) {
+        return res.status(404).json({ error: 'project not found' });
+      }
+      const project = JSON.parse(row.data);
+      const q = req.query as Record<string, string>;
+      if (!q.name) {
+        return res.status(400).json({ error: 'missing required param: name' });
+      }
+      const newItem = {
+        id: String(Date.now()),
+        category: q.category || 'audio',
+        name: q.name,
+        quantity: parseInt(q.quantity || '1', 10),
+        unit: q.unit || '式',
+        price: parseInt(q.price || '0', 10),
+        costPrice: parseInt(q.costPrice || '0', 10),
+        note: q.note || '',
+        internalOnly: q.internal === 'true',
+        subItems: q.subItems ? q.subItems.split(',') : [],
+      };
+      project.items.push(newItem);
+      project.updatedAt = Date.now();
+      await db.run(
+        'INSERT OR REPLACE INTO projects (id, data, updatedAt) VALUES (?, ?, ?)',
+        [project.id, JSON.stringify(project), project.updatedAt]
+      );
+      res.json({ success: true, itemId: newItem.id });
+    } catch (error) {
+      console.error('Failed to add item:', error);
+      res.status(500).json({ error: 'Failed to add item' });
     }
   });
 
