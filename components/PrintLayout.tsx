@@ -56,15 +56,12 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
 
     const marginMM = 5;
     const pageWidthMM = 210;
-    const contentWidthMM = pageWidthMM - marginMM * 2;
 
-    // Measure actual content height and convert to mm for a single-page PDF
+    // Measure actual content height in px, convert to mm using 96dpi
     const contentEl = element!;
     const scale = 2;
-    const contentWidthPx = contentEl.scrollWidth;
-    const contentHeightPx = contentEl.scrollHeight;
-    const pxPerMM = (contentWidthPx * scale) / (contentWidthMM * (96 / 25.4) * scale / (96 / 25.4));
-    const contentHeightMM = (contentHeightPx / contentWidthPx) * contentWidthMM + marginMM * 2 + 5;
+    const pxPerMM = 96 / 25.4;
+    const contentHeightMM = contentEl.scrollHeight / pxPerMM + marginMM * 2 + 10;
 
     const opt = {
       margin:       marginMM,
