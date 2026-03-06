@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Project, Category, Subcontract } from '../types';
+import type { AppSettings } from '../App';
 import { CATEGORIES } from '../constants';
 import { formatCurrency, formatDate, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal } from '../utils/helpers';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
@@ -10,12 +11,15 @@ declare var html2pdf: any;
 interface PrintLayoutProps {
   type: 'quote' | 'list' | 'subcontract' | 'cost';
   project: Project;
+  settings?: AppSettings;
   subcontract?: Subcontract;
   onBack: () => void;
   onSwitchType?: () => void;
 }
 
-export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcontract, onBack, onSwitchType }) => {
+export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, settings, subcontract, onBack, onSwitchType }) => {
+  const salesName = settings?.salesName || '林宇珅';
+  const salesPhone = settings?.salesPhone || '0912-345-678';
   const isQuote = type === 'quote';
   const isList = type === 'list';
   const isSubcontract = type === 'subcontract';
@@ -292,11 +296,11 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
                   <div className="flex gap-2">
                       <span className="w-[40px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">業務</span>
                       <span>聯繫人</span>
-                      <span className="font-bold ml-2">林宇珅</span>
+                      <span className="font-bold ml-2">{salesName}</span>
                   </div>
                   <div className="flex gap-2">
                       <span>電話</span>
-                      <span className="font-bold ml-2">0912-345-678</span>
+                      <span className="font-bold ml-2">{salesPhone}</span>
                   </div>
                   <div className="flex gap-2">
                       <span>製表日期</span>

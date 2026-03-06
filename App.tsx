@@ -19,7 +19,14 @@ const migratePeriodToCharges = (period: number): PeriodCharge[] => {
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectEditor } from './components/ProjectEditor';
 import { PrintLayout } from './components/PrintLayout';
-import { PlusCircle, Search, Trash2 } from 'lucide-react';
+import { PlusCircle, Search, Trash2, Settings } from 'lucide-react';
+
+export interface AppSettings {
+  salesName: string;
+  salesPhone: string;
+}
+
+const DEFAULT_SETTINGS: AppSettings = { salesName: '林宇珅', salesPhone: '0912-345-678' };
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -30,8 +37,42 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Settings
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingSettings, setEditingSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
   // State for delete confirmation modal
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  // Fetch settings on mount
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then((data: Record<string, string>) => {
+        const s: AppSettings = {
+          salesName: data.salesName || DEFAULT_SETTINGS.salesName,
+          salesPhone: data.salesPhone || DEFAULT_SETTINGS.salesPhone,
+        };
+        setSettings(s);
+        setEditingSettings(s);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveSettings = async () => {
+    setSettings(editingSettings);
+    setShowSettings(false);
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingSettings),
+      });
+    } catch (err) {
+      console.error('Failed to save settings', err);
+    }
+  };
 
   // Fetch projects on mount
   useEffect(() => {
@@ -187,6 +228,7 @@ const App: React.FC = () => {
       <PrintLayout
         type={viewMode === 'preview_quote' ? 'quote' : 'list'}
         project={getActiveProject()}
+        settings={settings}
         onBack={() => setViewMode('dashboard')}
         onSwitchType={() => setViewMode(prev => prev === 'preview_quote' ? 'preview_list' : 'preview_quote')}
       />
@@ -199,6 +241,7 @@ const App: React.FC = () => {
       <PrintLayout
         type="cost"
         project={getActiveProject()}
+        settings={settings}
         onBack={() => setViewMode('dashboard')}
       />
     );
@@ -212,6 +255,7 @@ const App: React.FC = () => {
         <PrintLayout
           type="subcontract"
           project={getActiveProject()}
+          settings={settings}
           subcontract={sub}
           onBack={() => { setViewMode('dashboard'); setCurrentSubcontractId(null); }}
         />
@@ -241,6 +285,13 @@ const App: React.FC = () => {
               className="w-full bg-slate-100 border border-slate-200 rounded-full pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:bg-white outline-none transition-all placeholder-slate-400 text-slate-800"
             />
           </div>
+          <button
+            onClick={() => { setEditingSettings(settings); setShowSettings(true); }}
+            className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
+            title="設定"
+          >
+            <Settings size={20} />
+          </button>
           <button
             onClick={handleCreateProject}
             className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-5 py-2 rounded-full font-bold transition-colors shadow-lg shadow-primary-500/20 whitespace-nowrap"
@@ -287,6 +338,56 @@ const App: React.FC = () => {
         <span>專案總數: {projects.length}</span>
         <span>系統狀態: 正常 (已儲存)</span>
       </footer>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full border border-slate-100">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
+                <Settings size={20} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800">系統設定</h3>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">業務聯繫人</label>
+                <input
+                  type="text"
+                  value={editingSettings.salesName}
+                  onChange={e => setEditingSettings(prev => ({ ...prev, salesName: e.target.value }))}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                  placeholder="林宇珅"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">業務電話</label>
+                <input
+                  type="text"
+                  value={editingSettings.salesPhone}
+                  onChange={e => setEditingSettings(prev => ({ ...prev, salesPhone: e.target.value }))}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                  placeholder="0912-345-678"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={saveSettings}
+                className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-bold shadow-lg shadow-primary-500/20 transition-colors"
+              >
+                儲存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {projectToDelete && (
