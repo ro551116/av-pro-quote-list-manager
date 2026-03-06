@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Project, Category, Subcontract } from '../types';
 import { CATEGORIES } from '../constants';
-import { formatCurrency, formatDate, calcClientTotal, calcCostTotal, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal } from '../utils/helpers';
+import { formatCurrency, formatDate, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal } from '../utils/helpers';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
 
 // Declare html2pdf for TypeScript
 declare var html2pdf: any;
 
 interface PrintLayoutProps {
-  type: 'quote' | 'list' | 'subcontract';
+  type: 'quote' | 'list' | 'subcontract' | 'cost';
   project: Project;
   subcontract?: Subcontract;
   onBack: () => void;
@@ -19,6 +19,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
   const isQuote = type === 'quote';
   const isList = type === 'list';
   const isSubcontract = type === 'subcontract';
+  const isCost = type === 'cost';
   const [isGenerating, setIsGenerating] = useState(false);
 
   const visibleItems = isSubcontract
@@ -40,7 +41,10 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
   const costTax = Math.round(costSubtotal * project.taxRate);
   const costTotal = costSubtotal + costTax;
 
-  const typeLabel = isQuote ? '報價單' : isList ? '器材清單' : '發包單';
+  const grossProfit = subtotal - costSubtotal;
+  const grossProfitRate = subtotal > 0 ? (grossProfit / subtotal) * 100 : 0;
+
+  const typeLabel = isQuote ? '報價單' : isList ? '器材清單' : isCost ? '成本利潤表' : '發包單';
   const nextLabel = isQuote ? '器材清單' : isList ? '報價單' : '';
 
   const handleDownloadPDF = () => {
@@ -108,6 +112,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
               {isQuote && '包含金額與條款'}
               {isList && '顯示內部細項、出庫勾選框'}
               {isSubcontract && '發包至協力廠商，含成本金額'}
+              {isCost && '內部文件：客報、成本、利潤分析'}
             </span>
           </div>
         </div>
@@ -163,8 +168,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
               </div>
 
               {/* Green Title Bar */}
-              <div className="bg-[#8bf136] text-center text-xl font-bold py-1 border-t-2 border-b-2 border-black mb-4 print:bg-[#8bf136] print:print-color-adjust-exact">
-                 宇珅活動有限公司{typeLabel}
+              <div className={`${isCost ? 'bg-slate-800 text-white' : 'bg-[#8bf136]'} text-center text-xl font-bold py-1 border-t-2 border-b-2 border-black mb-4 print:print-color-adjust-exact ${isCost ? 'print:bg-slate-800 print:text-white' : 'print:bg-[#8bf136]'}`}>
+                 {isCost ? '內部文件 — 成本利潤分析' : `宇珅活動有限公司${typeLabel}`}
               </div>
 
               {/* Info Grid */}
@@ -282,8 +287,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
               </div>
               )}
 
-              {/* Sales Info Row (not for subcontract) */}
-              {!isSubcontract && <div className="flex flex-wrap justify-between px-2 mb-4 text-[13px] border-b-2 border-transparent">
+              {/* Sales Info Row (not for subcontract/cost) */}
+              {!isSubcontract && !isCost && <div className="flex flex-wrap justify-between px-2 mb-4 text-[13px] border-b-2 border-transparent">
                   <div className="flex gap-2">
                       <span className="w-[40px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">業務</span>
                       <span>聯繫人</span>
@@ -344,6 +349,18 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
                                         <th className="border border-black py-1 w-[10%] font-medium">數量</th>
                                         <th className="border border-black py-1 w-[10%] font-medium">單位</th>
                                         <th className="border border-black py-1 w-[40%] font-medium">備註</th>
+                                    </>
+                                  )}
+                                  {isCost && (
+                                    <>
+                                        <th className="border border-black py-1 w-[20%] font-medium">品名</th>
+                                        <th className="border border-black py-1 w-[7%] font-medium">數量</th>
+                                        <th className="border border-black py-1 w-[10%] font-medium">客報單價</th>
+                                        <th className="border border-black py-1 w-[12%] font-medium">客報金額</th>
+                                        <th className="border border-black py-1 w-[10%] font-medium">成本單價</th>
+                                        <th className="border border-black py-1 w-[12%] font-medium">成本金額</th>
+                                        <th className="border border-black py-1 w-[12%] font-medium">利潤</th>
+                                        <th className="border border-black py-1 w-[7%] font-medium">利潤率</th>
                                     </>
                                   )}
                               </tr>
@@ -424,6 +441,24 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
                                             </td>
                                         </>
                                       )}
+                                      {isCost && (() => {
+                                        const clientTotal = calcClientTotal(item);
+                                        const costTotal = calcCostTotal(item);
+                                        const profit = clientTotal - costTotal;
+                                        const margin = calcProfitMargin(item);
+                                        return (
+                                          <>
+                                            <td className="border border-black py-2 px-2 align-top font-bold">{item.name}</td>
+                                            <td className="border border-black py-2 px-2 text-center align-top">{item.quantity}{item.unit}</td>
+                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.price)}</td>
+                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(clientTotal)}</td>
+                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.costPrice || 0)}</td>
+                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(costTotal)}</td>
+                                            <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">{formatCurrency(profit)}</td>
+                                            <td className={`border border-black py-2 px-2 text-center align-top font-bold ${margin >= 30 ? 'text-emerald-700' : margin >= 10 ? 'text-amber-700' : 'text-red-600'}`}>{margin.toFixed(0)}%</td>
+                                          </>
+                                        );
+                                      })()}
                                   </tr>
                                 );
                               })}
@@ -461,6 +496,52 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
                           </td>
                         </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* --- Cost Summary (cost type only) --- */}
+              {isCost && (
+                <div className="w-full mb-4">
+                  <table className="w-full text-[13px] border-collapse border-2 border-black">
+                    <tbody>
+                      <tr className="border border-black">
+                        <td className="py-2 px-3 font-bold w-[50%]">客報合計（未稅）</td>
+                        <td className="py-2 px-3 text-right font-mono">{formatCurrency(subtotal)}</td>
+                      </tr>
+                      <tr className="border border-black">
+                        <td className="py-2 px-3 font-bold">成本合計（未稅）</td>
+                        <td className="py-2 px-3 text-right font-mono">{formatCurrency(costSubtotal)}</td>
+                      </tr>
+                      <tr className="border border-black bg-emerald-50 print:bg-emerald-50 print:print-color-adjust-exact">
+                        <td className="py-2 px-3 font-bold text-emerald-800">毛利（未稅）</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold text-emerald-800">{formatCurrency(grossProfit)} <span className="text-xs">({grossProfitRate.toFixed(1)}%)</span></td>
+                      </tr>
+                      <tr className="border border-black">
+                        <td className="py-2 px-3 font-bold">客報含稅</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">{formatCurrency(total)}</td>
+                      </tr>
+                      <tr className="border border-black">
+                        <td className="py-2 px-3 font-bold">成本含稅</td>
+                        <td className="py-2 px-3 text-right font-mono">{formatCurrency(costTotal)}</td>
+                      </tr>
+                      <tr className="border border-black bg-emerald-100 print:bg-emerald-100 print:print-color-adjust-exact">
+                        <td className="py-2 px-3 font-bold text-emerald-900 text-base">淨利（含稅）</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold text-emerald-900 text-lg">{formatCurrency(total - costTotal)}</td>
+                      </tr>
+                      {project.negotiatedPrice != null && project.negotiatedPrice > 0 && (
+                        <>
+                          <tr className="border border-black bg-amber-50 print:bg-amber-50 print:print-color-adjust-exact">
+                            <td className="py-2 px-3 font-bold text-amber-800">議價後金額（含稅）</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-amber-800">{formatCurrency(project.negotiatedPrice)}</td>
+                          </tr>
+                          <tr className="border border-black bg-amber-100 print:bg-amber-100 print:print-color-adjust-exact">
+                            <td className="py-2 px-3 font-bold text-amber-900 text-base">議價後淨利</td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-amber-900 text-lg">{formatCurrency(project.negotiatedPrice - costTotal)} <span className="text-xs">({costTotal > 0 ? (((project.negotiatedPrice - costTotal) / project.negotiatedPrice) * 100).toFixed(1) : 0}%)</span></td>
+                          </tr>
+                        </>
+                      )}
                     </tbody>
                   </table>
                 </div>

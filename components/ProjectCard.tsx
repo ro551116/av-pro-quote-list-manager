@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
 import { formatDate, formatCurrency, calcBaseSubtotal, calcGrandSubtotal } from '../utils/helpers';
-import { Edit, Trash2, FileText, List, Send, ChevronDown } from 'lucide-react';
+import { Edit, Trash2, FileText, List, Send, ChevronDown, BarChart3 } from 'lucide-react';
 
 interface ProjectCardProps {
   project: Project;
@@ -9,10 +9,11 @@ interface ProjectCardProps {
   onDelete: (id: string) => void;
   onViewQuote: (id: string) => void;
   onViewList: (id: string) => void;
+  onViewCost: (id: string) => void;
   onViewSubcontract: (projectId: string, subcontractId: string) => void;
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDelete, onViewQuote, onViewList, onViewSubcontract }) => {
+export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDelete, onViewQuote, onViewList, onViewCost, onViewSubcontract }) => {
   const [showSubMenu, setShowSubMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -63,18 +64,24 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDel
 
       <div className="flex flex-col gap-2 mt-auto">
         {/* Row 1: document buttons */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <button
             onClick={(e) => { e.stopPropagation(); onViewQuote(project.id); }}
-            className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg text-sm transition-colors"
+            className="flex items-center justify-center gap-1 bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg text-sm transition-colors"
           >
             <FileText size={14} /> 報價單
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onViewList(project.id); }}
-            className="flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm transition-colors"
+            className="flex items-center justify-center gap-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 py-2 rounded-lg text-sm transition-colors"
           >
             <List size={14} /> 器材單
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onViewCost(project.id); }}
+            className="flex items-center justify-center gap-1 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 py-2 rounded-lg text-sm transition-colors"
+          >
+            <BarChart3 size={14} /> 成本
           </button>
           {/* Subcontract button with dropdown */}
           <div className="relative" ref={menuRef}>

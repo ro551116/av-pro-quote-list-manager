@@ -57,4 +57,4 @@ export interface Project {
   updatedAt: number;
 }
 
-export type ViewMode = 'dashboard' | 'editor' | 'preview_quote' | 'preview_list' | 'preview_subcontract';
+export type ViewMode = 'dashboard' | 'editor' | 'preview_quote' | 'preview_list' | 'preview_subcontract' | 'preview_cost';

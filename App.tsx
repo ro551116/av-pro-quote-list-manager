@@ -193,6 +193,17 @@ const App: React.FC = () => {
     );
   }
 
+  // Cost / Profit preview
+  if (viewMode === 'preview_cost' && currentProjectId) {
+    return (
+      <PrintLayout
+        type="cost"
+        project={getActiveProject()}
+        onBack={() => setViewMode('dashboard')}
+      />
+    );
+  }
+
   // Subcontract preview
   if (viewMode === 'preview_subcontract' && currentProjectId && currentSubcontractId) {
     const sub = getActiveSubcontract();
@@ -259,6 +270,7 @@ const App: React.FC = () => {
                 onDelete={handleDeleteProject}
                 onViewQuote={(id) => { setCurrentProjectId(id); setViewMode('preview_quote'); }}
                 onViewList={(id) => { setCurrentProjectId(id); setViewMode('preview_list'); }}
+                onViewCost={(id) => { setCurrentProjectId(id); setViewMode('preview_cost'); }}
                 onViewSubcontract={(projectId, subcontractId) => {
                   setCurrentProjectId(projectId);
                   setCurrentSubcontractId(subcontractId);
