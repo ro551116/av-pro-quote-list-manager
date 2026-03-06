@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, ViewMode, Subcontract, PeriodCharge } from './types';
+import { Project, ViewMode, Subcontract, PeriodCharge, SalesPerson } from './types';
 import { INITIAL_ITEMS } from './constants';
 import { generateId } from './utils/helpers';
 
@@ -21,12 +21,9 @@ import { ProjectEditor } from './components/ProjectEditor';
 import { PrintLayout } from './components/PrintLayout';
 import { PlusCircle, Search, Trash2, Settings } from 'lucide-react';
 
-export interface AppSettings {
-  salesName: string;
-  salesPhone: string;
-}
-
-const DEFAULT_SETTINGS: AppSettings = { salesName: '林宇珅', salesPhone: '0912-345-678' };
+const DEFAULT_SALESPEOPLE: SalesPerson[] = [
+  { id: 'default', name: '林宇珅', phone: '0912-345-678' },
+];
 
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -37,10 +34,10 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Settings
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  // Salespeople settings
+  const [salespeople, setSalespeople] = useState<SalesPerson[]>(DEFAULT_SALESPEOPLE);
   const [showSettings, setShowSettings] = useState(false);
-  const [editingSettings, setEditingSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [editingSalespeople, setEditingSalespeople] = useState<SalesPerson[]>(DEFAULT_SALESPEOPLE);
 
   // State for delete confirmation modal
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
@@ -50,24 +47,28 @@ const App: React.FC = () => {
     fetch('/api/settings')
       .then(res => res.json())
       .then((data: Record<string, string>) => {
-        const s: AppSettings = {
-          salesName: data.salesName || DEFAULT_SETTINGS.salesName,
-          salesPhone: data.salesPhone || DEFAULT_SETTINGS.salesPhone,
-        };
-        setSettings(s);
-        setEditingSettings(s);
+        if (data.salespeople) {
+          try {
+            const parsed = JSON.parse(data.salespeople) as SalesPerson[];
+            if (parsed.length > 0) {
+              setSalespeople(parsed);
+              setEditingSalespeople(parsed);
+            }
+          } catch {}
+        }
       })
       .catch(() => {});
   }, []);
 
   const saveSettings = async () => {
-    setSettings(editingSettings);
+    const filtered = editingSalespeople.filter(s => s.name.trim());
+    setSalespeople(filtered);
     setShowSettings(false);
     try {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingSettings),
+        body: JSON.stringify({ salespeople: JSON.stringify(filtered) }),
       });
     } catch (err) {
       console.error('Failed to save settings', err);
@@ -219,7 +220,7 @@ const App: React.FC = () => {
   }
 
   if (viewMode === 'editor' && currentProjectId) {
-    return <ProjectEditor project={getActiveProject()} onSave={handleSaveProject} onCancel={() => setViewMode('dashboard')} />;
+    return <ProjectEditor project={getActiveProject()} salespeople={salespeople} onSave={handleSaveProject} onCancel={() => setViewMode('dashboard')} />;
   }
 
   // Quote / List toggle
@@ -228,7 +229,7 @@ const App: React.FC = () => {
       <PrintLayout
         type={viewMode === 'preview_quote' ? 'quote' : 'list'}
         project={getActiveProject()}
-        settings={settings}
+        salespeople={salespeople}
         onBack={() => setViewMode('dashboard')}
         onSwitchType={() => setViewMode(prev => prev === 'preview_quote' ? 'preview_list' : 'preview_quote')}
       />
@@ -241,7 +242,7 @@ const App: React.FC = () => {
       <PrintLayout
         type="cost"
         project={getActiveProject()}
-        settings={settings}
+        salespeople={salespeople}
         onBack={() => setViewMode('dashboard')}
       />
     );
@@ -255,7 +256,7 @@ const App: React.FC = () => {
         <PrintLayout
           type="subcontract"
           project={getActiveProject()}
-          settings={settings}
+          salespeople={salespeople}
           subcontract={sub}
           onBack={() => { setViewMode('dashboard'); setCurrentSubcontractId(null); }}
         />
@@ -286,7 +287,7 @@ const App: React.FC = () => {
             />
           </div>
           <button
-            onClick={() => { setEditingSettings(settings); setShowSettings(true); }}
+            onClick={() => { setEditingSalespeople(salespeople); setShowSettings(true); }}
             className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
             title="設定"
           >
@@ -342,35 +343,56 @@ const App: React.FC = () => {
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full border border-slate-100">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full border border-slate-100">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
                 <Settings size={20} />
               </div>
-              <h3 className="text-xl font-bold text-slate-800">系統設定</h3>
+              <h3 className="text-xl font-bold text-slate-800">業務人員管理</h3>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">業務聯繫人</label>
-                <input
-                  type="text"
-                  value={editingSettings.salesName}
-                  onChange={e => setEditingSettings(prev => ({ ...prev, salesName: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="林宇珅"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">業務電話</label>
-                <input
-                  type="text"
-                  value={editingSettings.salesPhone}
-                  onChange={e => setEditingSettings(prev => ({ ...prev, salesPhone: e.target.value }))}
-                  className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="0912-345-678"
-                />
-              </div>
+            <div className="space-y-3 max-h-[400px] overflow-y-auto">
+              {editingSalespeople.map((sp, idx) => (
+                <div key={sp.id} className="flex items-center gap-2 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <div className="flex-1 space-y-2">
+                    <input
+                      type="text"
+                      value={sp.name}
+                      onChange={e => {
+                        const arr = [...editingSalespeople];
+                        arr[idx] = { ...arr[idx], name: e.target.value };
+                        setEditingSalespeople(arr);
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="姓名"
+                    />
+                    <input
+                      type="text"
+                      value={sp.phone}
+                      onChange={e => {
+                        const arr = [...editingSalespeople];
+                        arr[idx] = { ...arr[idx], phone: e.target.value };
+                        setEditingSalespeople(arr);
+                      }}
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 text-sm text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                      placeholder="電話"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setEditingSalespeople(prev => prev.filter((_, i) => i !== idx))}
+                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="刪除"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
             </div>
+            <button
+              onClick={() => setEditingSalespeople(prev => [...prev, { id: generateId(), name: '', phone: '' }])}
+              className="w-full mt-3 py-2 text-sm font-bold text-primary-600 hover:bg-primary-50 border border-dashed border-primary-300 rounded-lg transition-colors"
+            >
+              + 新增業務
+            </button>
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => setShowSettings(false)}

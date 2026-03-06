@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Project, EquipmentItem, Category, Subcontract, PeriodCharge } from '../types';
+import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS } from '../constants';
 import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency } from '../utils/helpers';
 import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
 
 interface ProjectEditorProps {
   project: Project;
+  salespeople?: SalesPerson[];
   onSave: (project: Project) => void;
   onCancel: () => void;
 }
 
-export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, onSave, onCancel }) => {
+export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, salespeople = [], onSave, onCancel }) => {
   const [project, setProject] = useState<Project>(JSON.parse(JSON.stringify(initialProject)));
   const [activeCategoryModal, setActiveCategoryModal] = useState<Category | null>(null);
 
@@ -344,6 +345,21 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   <label className="block text-slate-500 text-xs font-bold uppercase mb-1">議價後金額（含稅）</label>
                   <input type="number" value={project.negotiatedPrice || ''} onChange={e => handleInfoChange('negotiatedPrice', e.target.value ? parseInt(e.target.value) : undefined)} placeholder="留空則不顯示" className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none" />
                </div>
+               {salespeople.length > 0 && (
+               <div>
+                  <label className="block text-slate-500 text-xs font-bold uppercase mb-1">承辦業務</label>
+                  <select
+                    value={project.salesId || ''}
+                    onChange={e => handleInfoChange('salesId', e.target.value || undefined)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                  >
+                    <option value="">-- 請選擇 --</option>
+                    {salespeople.map(sp => (
+                      <option key={sp.id} value={sp.id}>{sp.name} ({sp.phone})</option>
+                    ))}
+                  </select>
+               </div>
+               )}
             </div>
 
             {/* Column 3: Schedule */}

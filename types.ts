@@ -33,6 +33,12 @@ export interface EquipmentItem {
   subItems?: string[];    // Array of strings for accessories (e.g. ['HDMI Cable', 'Power Cord'])
 }
 
+export interface SalesPerson {
+  id: string;
+  name: string;
+  phone: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -54,6 +60,7 @@ export interface Project {
   subcontracts?: Subcontract[];
   taxRate: number; // e.g., 0.05 for 5%
   negotiatedPrice?: number; // 議價後金額（含稅）
+  salesId?: string; // 業務人員 ID
   updatedAt: number;
 }
 

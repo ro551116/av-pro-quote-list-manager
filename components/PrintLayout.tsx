@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Category, Subcontract } from '../types';
-import type { AppSettings } from '../App';
+import { Project, Category, Subcontract, SalesPerson } from '../types';
 import { CATEGORIES } from '../constants';
 import { formatCurrency, formatDate, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal } from '../utils/helpers';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
@@ -11,15 +10,16 @@ declare var html2pdf: any;
 interface PrintLayoutProps {
   type: 'quote' | 'list' | 'subcontract' | 'cost';
   project: Project;
-  settings?: AppSettings;
+  salespeople?: SalesPerson[];
   subcontract?: Subcontract;
   onBack: () => void;
   onSwitchType?: () => void;
 }
 
-export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, settings, subcontract, onBack, onSwitchType }) => {
-  const salesName = settings?.salesName || '林宇珅';
-  const salesPhone = settings?.salesPhone || '0912-345-678';
+export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespeople = [], subcontract, onBack, onSwitchType }) => {
+  const activeSales = salespeople.find(s => s.id === project.salesId) || salespeople[0];
+  const salesName = activeSales?.name || '未指定';
+  const salesPhone = activeSales?.phone || '';
   const isQuote = type === 'quote';
   const isList = type === 'list';
   const isSubcontract = type === 'subcontract';
