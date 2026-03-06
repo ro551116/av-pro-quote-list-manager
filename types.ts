@@ -53,6 +53,7 @@ export interface Project {
   items: EquipmentItem[];
   subcontracts?: Subcontract[];
   taxRate: number; // e.g., 0.05 for 5%
+  negotiatedPrice?: number; // 議價後金額（含稅）
   updatedAt: number;
 }
 

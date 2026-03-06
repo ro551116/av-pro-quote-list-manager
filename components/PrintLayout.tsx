@@ -515,10 +515,16 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
                                     <span>稅金</span>
                                     <span className="font-mono">{formatCurrency(tax)}</span>
                                 </div>
-                                <div className="flex justify-between px-3 py-1 font-bold bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact">
+                                <div className="flex justify-between px-3 py-1 font-bold bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact border-b border-black">
                                     <span>合計</span>
                                     <span className="font-mono text-lg">{formatCurrency(total)}</span>
                                 </div>
+                                {project.negotiatedPrice != null && project.negotiatedPrice > 0 && (
+                                    <div className="flex justify-between px-3 py-1 font-bold bg-[#8bf136] print:bg-[#8bf136] print:print-color-adjust-exact">
+                                        <span>議價後金額</span>
+                                        <span className="font-mono text-lg">{formatCurrency(project.negotiatedPrice)}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

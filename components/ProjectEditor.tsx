@@ -340,6 +340,10 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                     <span className="text-slate-500 font-bold">%</span>
                   </div>
                </div>
+               <div>
+                  <label className="block text-slate-500 text-xs font-bold uppercase mb-1">議價後金額（含稅）</label>
+                  <input type="number" value={project.negotiatedPrice || ''} onChange={e => handleInfoChange('negotiatedPrice', e.target.value ? parseInt(e.target.value) : undefined)} placeholder="留空則不顯示" className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none" />
+               </div>
             </div>
 
             {/* Column 3: Schedule */}
