@@ -54,13 +54,25 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, subcont
     setIsGenerating(true);
     const element = document.getElementById('printable-content');
 
+    const marginMM = 5;
+    const pageWidthMM = 210;
+    const contentWidthMM = pageWidthMM - marginMM * 2;
+
+    // Measure actual content height and convert to mm for a single-page PDF
+    const contentEl = element!;
+    const scale = 2;
+    const contentWidthPx = contentEl.scrollWidth;
+    const contentHeightPx = contentEl.scrollHeight;
+    const pxPerMM = (contentWidthPx * scale) / (contentWidthMM * (96 / 25.4) * scale / (96 / 25.4));
+    const contentHeightMM = (contentHeightPx / contentWidthPx) * contentWidthMM + marginMM * 2 + 5;
+
     const opt = {
-      margin:       5,
+      margin:       marginMM,
       filename:     `${project.name}_${typeLabel}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, letterRendering: true },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+      html2canvas:  { scale, useCORS: true, letterRendering: true },
+      jsPDF:        { unit: 'mm', format: [pageWidthMM, contentHeightMM], orientation: 'portrait' },
+      pagebreak:    { mode: [] as string[] }
     };
 
     setTimeout(() => {
