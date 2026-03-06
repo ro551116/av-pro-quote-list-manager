@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Project, EquipmentItem, Category, Subcontract, PeriodCharge } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS } from '../constants';
-import { generateId, calcClientTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency } from '../utils/helpers';
+import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency } from '../utils/helpers';
 import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
 
 interface ProjectEditorProps {
@@ -903,6 +903,102 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
             )}
           </div>
         </div>
+
+        {/* Cost / Profit Summary */}
+        {(() => {
+          const charges = project.periodCharges || [];
+          const base = calcBaseSubtotal(project.items);
+          const clientSubtotal = charges.length > 0 ? calcGrandSubtotal(base, charges) : base;
+          const clientTax = Math.round(clientSubtotal * project.taxRate);
+          const clientTotal = clientSubtotal + clientTax;
+          const costSum = project.items.reduce((acc, item) => acc + calcCostTotal(item), 0);
+          const costTax = Math.round(costSum * project.taxRate);
+          const costTotal = costSum + costTax;
+          const grossProfit = clientSubtotal - costSum;
+          const grossRate = clientSubtotal > 0 ? (grossProfit / clientSubtotal) * 100 : 0;
+          const netProfit = clientTotal - costTotal;
+          const neg = project.negotiatedPrice;
+          const negProfit = neg ? neg - costTotal : 0;
+          const negRate = neg && neg > 0 ? ((neg - costTotal) / neg) * 100 : 0;
+          return (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 bg-emerald-50 border-b border-slate-100">
+                <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
+                  成本利潤摘要
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                    <div className="text-xs text-slate-400 font-bold uppercase mb-1">客報合計（含稅）</div>
+                    <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(clientTotal)}</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                    <div className="text-xs text-slate-400 font-bold uppercase mb-1">成本合計（含稅）</div>
+                    <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(costTotal)}</div>
+                  </div>
+                  <div className={`rounded-lg p-4 border ${grossRate >= 20 ? 'bg-emerald-50 border-emerald-200' : grossRate >= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="text-xs font-bold uppercase mb-1 text-slate-500">毛利（未稅）</div>
+                    <div className={`text-lg font-mono font-bold ${grossRate >= 20 ? 'text-emerald-700' : grossRate >= 10 ? 'text-amber-700' : 'text-red-600'}`}>
+                      {formatCurrency(grossProfit)}
+                      <span className="text-xs ml-1">({grossRate.toFixed(1)}%)</span>
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-4 border ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="text-xs font-bold uppercase mb-1 text-slate-500">淨利（含稅）</div>
+                    <div className={`text-lg font-mono font-bold ${netProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                      {formatCurrency(netProfit)}
+                    </div>
+                  </div>
+                </div>
+
+                {neg != null && neg > 0 && (
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 col-span-2">
+                      <div className="text-xs text-amber-600 font-bold uppercase mb-1">議價後金額（含稅）</div>
+                      <div className="text-lg font-mono font-bold text-amber-800">{formatCurrency(neg)}</div>
+                    </div>
+                    <div className={`rounded-lg p-4 border col-span-2 ${negProfit >= 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className="text-xs font-bold uppercase mb-1 text-slate-500">議價後淨利</div>
+                      <div className={`text-lg font-mono font-bold ${negProfit >= 0 ? 'text-amber-800' : 'text-red-600'}`}>
+                        {formatCurrency(negProfit)}
+                        <span className="text-xs ml-1">({negRate.toFixed(1)}%)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-category breakdown */}
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <div className="text-xs font-bold text-slate-400 uppercase mb-2">分類利潤</div>
+                  <div className="space-y-1">
+                    {CATEGORIES.map(cat => {
+                      const catItems = project.items.filter(i => i.category === cat.id);
+                      if (catItems.length === 0) return null;
+                      const catClient = catItems.filter(i => !i.internalOnly).reduce((s, i) => s + calcClientTotal(i), 0);
+                      const catCost = catItems.reduce((s, i) => s + calcCostTotal(i), 0);
+                      const catProfit = catClient - catCost;
+                      const catRate = catClient > 0 ? (catProfit / catClient) * 100 : 0;
+                      return (
+                        <div key={cat.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
+                          <span className={`font-bold ${cat.color}`}>{cat.label}</span>
+                          <div className="flex items-center gap-4 font-mono text-xs">
+                            <span className="text-slate-400">客報 {formatCurrency(catClient)}</span>
+                            <span className="text-slate-400">成本 {formatCurrency(catCost)}</span>
+                            <span className={`font-bold ${catRate >= 20 ? 'text-emerald-600' : catRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                              {formatCurrency(catProfit)} ({catRate.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="h-10"></div>
       </div>
