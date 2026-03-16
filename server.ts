@@ -180,7 +180,11 @@ async function startServer() {
 
   app.delete('/api/projects/:id', async (req, res) => {
     try {
-      await db.run('DELETE FROM projects WHERE id = ?', [req.params.id]);
+      if (req.params.id === '_null') {
+        await db.run('DELETE FROM projects WHERE id IS NULL');
+      } else {
+        await db.run('DELETE FROM projects WHERE id = ?', [req.params.id]);
+      }
       res.json({ success: true });
     } catch (error) {
       console.error('Failed to delete project:', error);
