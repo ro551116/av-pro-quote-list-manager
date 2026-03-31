@@ -1,5 +1,5 @@
 
-export type Category = 'audio' | 'lighting' | 'led' | 'projection' | 'power' | 'stage' | 'crew' | 'effects';
+export type Category = 'audio' | 'lighting' | 'led' | 'projection' | 'camera' | 'power' | 'stage' | 'crew' | 'effects';
 
 export interface PeriodCharge {
   id: string;

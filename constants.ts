@@ -5,6 +5,7 @@ export const CATEGORIES: { id: Category; label: string; color: string; bg: strin
   { id: 'lighting', label: '燈光系統', color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
   { id: 'led', label: 'LED系統', color: 'text-violet-500', bg: 'bg-violet-500/10' },
   { id: 'projection', label: '投影系統', color: 'text-pink-500', bg: 'bg-pink-500/10' },
+  { id: 'camera', label: '攝影系統', color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
   { id: 'power', label: '電力系統', color: 'text-orange-500', bg: 'bg-orange-500/10' },
   { id: 'stage', label: '舞台結構', color: 'text-amber-600', bg: 'bg-amber-600/10' },
   { id: 'crew', label: '工作團隊', color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -36,6 +37,11 @@ export const ACCESSORY_SUGGESTIONS: Record<Category, string[]> = {
     'SDI 訊號線', '轉接頭 (Type-C)', '轉接頭 (MiniDP)',
     '電源延長線', '筆電變壓器', '遙控器', '雷射筆電池',
     '投影機吊架', '訊號放大器'
+  ],
+  camera: [
+    'HDMI 訊號線', 'SDI 訊號線', '電源線', '電池',
+    '三腳架', '記憶卡', '讀卡機', '遮光罩',
+    '監看螢幕', '無線圖傳', '收音麥克風'
   ],
   power: [
     '電源延長線 (30m)', '電源延長線 (50m)', '排插 (6孔)',
@@ -121,6 +127,14 @@ export const STANDARD_EQUIPMENT_OPTIONS: Omit<EquipmentItem, 'id'>[] = [
   { category: 'projection', name: '筆記型電腦 (Laptop)', quantity: 1, unit: '台', price: 1500, note: 'MacBook Pro / Windows', subItems: ['變壓器', '滑鼠', '轉接頭'] },
   { category: 'projection', name: '簡報遙控器 (Clicker)', quantity: 1, unit: '支', price: 500, note: 'Logitech R-R0011 (庫存2個)', subItems: ['電池', '接收器'] },
   { category: 'projection', name: '視訊線材 (Cabling)', quantity: 1, unit: '批', price: 2000, note: 'HDMI / SDI / Fiber', subItems: [] },
+
+  // --- 攝影系統 ---
+  { category: 'camera', name: '攝影機', quantity: 1, unit: '台', price: 5000, note: 'Cinema Camera', subItems: ['電池', '記憶卡', '電源線'] },
+  { category: 'camera', name: '攝影三腳架', quantity: 1, unit: '組', price: 1500, note: 'Fluid Head Tripod', subItems: [] },
+  { category: 'camera', name: '監看螢幕', quantity: 1, unit: '台', price: 2000, note: '7" Field Monitor', subItems: ['HDMI 線', '電池', '支架'] },
+  { category: 'camera', name: '無線圖傳', quantity: 1, unit: '組', price: 3000, note: 'Wireless Video TX/RX', subItems: ['電池', '天線'] },
+  { category: 'camera', name: '攝影滑軌', quantity: 1, unit: '組', price: 2000, note: 'Camera Slider', subItems: ['腳架轉接板'] },
+  { category: 'camera', name: '攝影線材與配件', quantity: 1, unit: '批', price: 2000, note: 'HDMI / SDI / 電池 / 記憶卡', subItems: [] },
 
   // --- 電力系統 ---
   { category: 'power', name: '三相配電箱 (Main)', quantity: 1, unit: '式', price: 8000, note: '100A 三相主配電', subItems: ['電纜線', '接地線'] },
