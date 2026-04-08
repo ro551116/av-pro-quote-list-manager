@@ -52,48 +52,84 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const nextLabel = isQuote ? '器材清單' : isList ? '報價單' : '';
 
   const handleDownloadPDF = () => {
-    const isMobileOrTablet = window.innerWidth < 1024;
-
-    if (isMobileOrTablet) {
-      window.print();
-      return;
-    }
-
     setIsGenerating(true);
     const element = document.getElementById('printable-content');
 
+    if (!element || typeof html2pdf === 'undefined') {
+      window.print();
+      setIsGenerating(false);
+      return;
+    }
+
+    const isMobile = window.innerWidth < 1024;
     const marginMM = 5;
     const pageWidthMM = 210;
 
     // Measure actual content height in px, convert to mm using 96dpi
-    const contentEl = element!;
-    const scale = 2;
+    // Mobile 用較低 scale 避免 iOS Safari canvas 記憶體爆掉
+    const scale = isMobile ? 1.5 : 2;
     const pxPerMM = 96 / 25.4;
-    const contentHeightMM = contentEl.scrollHeight / pxPerMM + marginMM * 2 + 10;
+    const contentHeightMM = element.scrollHeight / pxPerMM + marginMM * 2 + 10;
 
+    const filename = `${project.name}_${typeLabel}.pdf`;
     const opt = {
       margin:       marginMM,
-      filename:     `${project.name}_${typeLabel}.pdf`,
+      filename,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale, useCORS: true, letterRendering: true },
+      html2canvas:  {
+        scale,
+        useCORS: true,
+        letterRendering: true,
+        allowTaint: false,
+        // 修正 CJK label justify hack 在 html2canvas 下會讓文字疊在一起的問題：
+        // 原本用 `text-justify-last + ::after { width:100% }` 撐開 inline-block，
+        // html2canvas 計算字距會出錯。clone 階段注入 style 關掉 hack。
+        onclone: (clonedDoc: Document) => {
+          const style = clonedDoc.createElement('style');
+          style.textContent = `
+            #printable-content *::after { content: none !important; }
+            #printable-content [class*="text-justify"] {
+              text-align: left !important;
+              text-align-last: auto !important;
+              letter-spacing: normal !important;
+            }
+            /* 修正 html2canvas 對中文小字 line-height 計算錯誤導致備註欄位疊字 */
+            #printable-content td,
+            #printable-content th {
+              line-height: 1.5 !important;
+              word-break: break-word !important;
+              overflow-wrap: break-word !important;
+              white-space: pre-wrap !important;
+            }
+          `;
+          clonedDoc.head.appendChild(style);
+        },
+      },
       jsPDF:        { unit: 'mm', format: [pageWidthMM, contentHeightMM], orientation: 'portrait' },
       pagebreak:    { mode: [] as string[] }
     };
 
     setTimeout(() => {
-        if (typeof html2pdf !== 'undefined') {
-            html2pdf().set(opt).from(element).save().then(() => {
-                setIsGenerating(false);
-            }).catch((err: any) => {
-                console.error('PDF Generation Error:', err);
-                setIsGenerating(false);
-                alert('PDF 生成失敗，將開啟系統列印視窗');
-                window.print();
-            });
-        } else {
-            window.print();
-            setIsGenerating(false);
-        }
+      // 手動處理 blob → <a download>，比 .save() 在 iOS Safari 上可靠
+      html2pdf().set(opt).from(element).outputPdf('blob').then((pdfBlob: Blob) => {
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.rel = 'noopener';
+        // iOS Safari 需要 anchor 真的在 DOM 內
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // 延遲 revoke，避免某些瀏覽器還沒讀完 blob
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        setIsGenerating(false);
+      }).catch((err: any) => {
+        console.error('PDF Generation Error:', err);
+        setIsGenerating(false);
+        alert('PDF 生成失敗，將開啟系統列印視窗');
+        window.print();
+      });
     }, 100);
   };
 
