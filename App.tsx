@@ -106,6 +106,18 @@ const App: React.FC = () => {
         }));
         setProjects(migratedData);
         setIsLoading(false);
+
+        // Handle URL query params for direct project navigation
+        // e.g. ?pid=<id>&view=quote|list|cost
+        const params = new URLSearchParams(window.location.search);
+        const pid = params.get('pid');
+        const view = params.get('view');
+        if (pid && migratedData.find(p => p.id === pid)) {
+          setCurrentProjectId(pid);
+          if (view === 'list') setViewMode('preview_list');
+          else if (view === 'cost') setViewMode('preview_cost');
+          else setViewMode('preview_quote');
+        }
       })
       .catch(err => {
         console.error('Failed to fetch projects', err);
