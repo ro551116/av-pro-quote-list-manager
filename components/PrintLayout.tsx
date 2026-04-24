@@ -947,37 +947,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                             </div>
                         </div>
 
-                        <div className="border border-black flex min-h-[140px]">
-                            <div className="w-[40px] md:w-[50px] border-r border-black flex items-center justify-center bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact">
-                                <span className="writing-vertical-lr text-lg font-bold tracking-[0.3em] py-4">簽名處</span>
-                            </div>
-                            <div className="flex-1 p-4 text-[13px] leading-7 flex items-center relative">
-                                <div className="z-10 relative">
-                                    請確認後簽名或蓋章回傳本公司，此報價單簽認即視同合約書，若有任何疑問請與承辦業務確認，本估價單有效期限 15 天。
-                                </div>
-                            </div>
-                            <div className="w-[180px] md:w-[200px] border-l border-black relative overflow-hidden flex items-center justify-center p-2">
-                                <img
-                                    src="/invoice-stamp.png"
-                                    alt="發票章"
-                                    className="w-[140px] h-auto object-contain mix-blend-multiply opacity-90 print:opacity-100"
-                                    onError={(e) => {
-                                        e.currentTarget.style.display = 'none';
-                                        if (e.currentTarget.nextElementSibling) {
-                                            (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
-                                        }
-                                    }}
-                                />
-                                <div className="hidden border-[3px] border-blue-800 text-blue-800 rounded-lg p-2 text-center w-[150px] relative transform -rotate-3 select-none opacity-90 print:opacity-100">
-                                    <div className="text-[10px] font-bold border-b border-blue-800 pb-1 mb-1 tracking-tighter">宇珅活動有限公司</div>
-                                    <div className="text-[10px] font-bold tracking-widest scale-x-90">統一發票專用章</div>
-                                    <div className="text-xl font-mono font-bold my-1 tracking-widest">52347411</div>
-                                    <div className="text-[10px] font-bold tracking-widest scale-x-90">負責人: 林宇珅</div>
-                                    <div className="absolute bottom-1 right-2 text-[8px]">新北市</div>
-                                </div>
-                            </div>
-                        </div>
-
                     </>
                  )}
 
