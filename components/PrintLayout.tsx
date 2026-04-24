@@ -471,6 +471,22 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   </div>
                 </div>
 
+                {/* 業務 / 客戶簽名 / 日期 三欄 */}
+                <div className="grid grid-cols-3 gap-6 mt-6 px-2">
+                  <div className="text-center">
+                    <p className="font-bold text-sm mb-8">業務 (Sales)</p>
+                    <div className="border-b border-black"></div>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-sm mb-8">客戶簽名 (Client Signature)</p>
+                    <div className="border-b border-black"></div>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-bold text-sm mb-8">日期 (Date)</p>
+                    <div className="border-b border-black"></div>
+                  </div>
+                </div>
+
                 <div className="text-center text-xs mt-4 font-medium text-gray-500">
                   新北市樹林區大安路548號3樓
                 </div>
