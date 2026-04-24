@@ -33,6 +33,12 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
       : project.items;
 
   const charges = project.periodCharges || [];
+  // 一天活動（只有一筆「活動日 100%」）不顯示該列，但金額計算保持不變
+  const hideTrivialCharge =
+    charges.length === 1 &&
+    charges[0].type === 'rate' &&
+    Math.abs(charges[0].value - 1.0) < 0.001;
+  const displayCharges = hideTrivialCharge ? [] : charges;
   const baseSubtotal = calcBaseSubtotal(project.items);
 
   // 精簡模式：只對報價單生效。每個類別合併成一列，價格為該類別客報合計。
@@ -337,8 +343,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                     <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">檔期</span>
                     <span className="px-1">:</span>
                     <span className="flex-1 font-bold">
-                      {charges.length > 0
-                        ? `${charges.length} 天 (${charges.map(c => c.label).filter(Boolean).join('+')})`
+                      {displayCharges.length > 0
+                        ? `${displayCharges.length} 天 (${displayCharges.map(c => c.label).filter(Boolean).join('+')})`
                         : `${project.period || 1} 天`}
                     </span>
                   </div>
@@ -395,7 +401,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                         <td className="border border-black py-2 px-2 align-middle text-xs"></td>
                       </tr>
                     ))}
-                    {charges.map((charge, i) => (
+                    {displayCharges.map((charge, i) => (
                       <tr key={charge.id} className="break-inside-avoid">
                         <td className="border border-black py-2 text-center align-middle font-mono">
                           {compactCategoryRows.length + i + 1}
@@ -466,7 +472,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                 </div>
 
                 <div className="text-center text-xs mt-4 font-medium text-gray-500">
-                  (23578)新北市中和區秀峰里景平路71-7號2樓之5
+                  新北市樹林區大安路548號3樓
                 </div>
               </div>
             </div>
@@ -609,8 +615,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                         <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">檔期</span>
                         <span className="px-1">:</span>
                         <span className="flex-1 font-bold">
-                          {charges.length > 0
-                            ? `${charges.length} 天 (${charges.map(c => c.label).filter(Boolean).join('+')})`
+                          {displayCharges.length > 0
+                            ? `${displayCharges.length} 天 (${displayCharges.map(c => c.label).filter(Boolean).join('+')})`
                             : `${project.period || 1} 天`
                           }
                         </span>
@@ -802,7 +808,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
               </div>
 
               {/* --- Period Charges Section (Quote only) --- */}
-              {isQuote && charges.length > 0 && (
+              {isQuote && displayCharges.length > 0 && (
                 <div className="w-full mb-2">
                   <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
                     檔期費用
@@ -815,7 +821,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                       </tr>
                     </thead>
                     <tbody>
-                      {charges.map((charge) => (
+                      {displayCharges.map((charge) => (
                         <tr key={charge.id} className="break-inside-avoid">
                           <td className="border border-black py-2 px-2 font-bold">
                             {charge.label}
@@ -972,20 +978,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-6 mt-6 px-2">
-                           <div className="text-center">
-                              <p className="font-bold text-sm mb-8">業務 (Sales)</p>
-                              <div className="border-b border-black"></div>
-                           </div>
-                           <div className="text-center">
-                              <p className="font-bold text-sm mb-8">客戶簽名 (Client Signature)</p>
-                              <div className="border-b border-black"></div>
-                           </div>
-                           <div className="text-center">
-                              <p className="font-bold text-sm mb-8">日期 (Date)</p>
-                              <div className="border-b border-black"></div>
-                           </div>
-                        </div>
                     </>
                  )}
 
@@ -1043,7 +1035,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                  )}
 
                  <div className="text-center text-xs mt-4 font-medium text-gray-500">
-                     (23578)新北市中和區秀峰里景平路71-7號2樓之5
+                     新北市樹林區大安路548號3樓
                  </div>
               </div>
           </div>
