@@ -356,7 +356,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                     <div className="flex flex-col">
                       <span className="font-bold">報價單附件模式</span>
                       <span className="text-[11px] opacity-70 font-normal leading-tight mt-0.5">
-                        報價單第一頁品項合併為類別（音響系統/燈光系統…），細項標「如附件」，合計金額不受品項多寡影響。第二頁自動附上品項明細作為附件。
+                        在報價單前面多加一頁精簡摘要（類別彙總 + 合計），客戶第一眼就看到總金額；原本的完整報價單作為第二頁（附件）不變動。
                       </span>
                     </div>
                   </label>

@@ -91,15 +91,15 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
       const style = clonedDoc.createElement('style');
       style.textContent = `
         #printable-content *::after,
-        #printable-attachment *::after { content: none !important; }
+        #printable-summary *::after { content: none !important; }
         #printable-content [class*="text-justify"],
-        #printable-attachment [class*="text-justify"] {
+        #printable-summary [class*="text-justify"] {
           text-align: left !important;
           text-align-last: auto !important;
           letter-spacing: normal !important;
         }
         #printable-content td, #printable-content th,
-        #printable-attachment td, #printable-attachment th {
+        #printable-summary td, #printable-summary th {
           line-height: 1.5 !important;
           word-break: break-word !important;
           overflow-wrap: break-word !important;
@@ -121,19 +121,19 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     };
 
-    // ---- 附件模式：兩頁 PDF，每頁各自用內容實際高度當頁面高，避免被切斷 ----
-    // html2pdf 的 bundle 沒把 html2canvas/jspdf 暴露到 global，所以透過它自己的 worker chain
-    // 分別取出 jsPDF instance（第一頁）和 canvas（第二頁），在 jsPDF 上 addPage 組兩頁 PDF。
-    const attachmentEl = compactMode ? document.getElementById('printable-attachment') : null;
-    if (compactMode && attachmentEl) {
+    // ---- 附件模式：兩頁 PDF，第 1 頁 = 精簡摘要（printable-summary）、第 2 頁 = 完整報價單（printable-content）
+    // 每頁各自用內容實際高度當頁面高，避免被切斷。html2pdf bundle 沒暴露 html2canvas/jspdf 到 global，
+    // 所以透過它的 worker chain 取得 jsPDF instance 和 canvas 手動組兩頁 PDF。
+    const summaryEl = compactMode ? document.getElementById('printable-summary') : null;
+    if (compactMode && summaryEl) {
       try {
         // 每頁高度：至少 A4 (297mm) 避免內容短被 jsPDF swap 成橫向；超過 A4 則用實際高度避免被切斷
         const A4_HEIGHT_MM = 297;
         const heightBufferMM = 8;
         const fitPageHeight = (el: HTMLElement) =>
           Math.max(el.scrollHeight / pxPerMM + marginMM * 2 + heightBufferMM, A4_HEIGHT_MM);
-        const h1mm = fitPageHeight(element);
-        const h2mm = fitPageHeight(attachmentEl);
+        const h1mm = fitPageHeight(summaryEl);
+        const h2mm = fitPageHeight(element);
         const innerW = pageWidthMM - marginMM * 2;
         const perPageCanvasOpts = {
           scale,
@@ -151,7 +151,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
           jsPDF: { unit: 'mm', format: [pageWidthMM, h1mm] },
           pagebreak: { mode: [] as string[] },
         };
-        const pdf: any = await html2pdf().set(page1Opt).from(element).toPdf().get('pdf');
+        const pdf: any = await html2pdf().set(page1Opt).from(summaryEl).toPdf().get('pdf');
 
         const page2Opt = {
           margin: 0,
@@ -160,9 +160,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
           jsPDF: { unit: 'mm', format: [pageWidthMM, h2mm] },
           pagebreak: { mode: [] as string[] },
         };
-        const canvas2: HTMLCanvasElement = await html2pdf().set(page2Opt).from(attachmentEl).toCanvas().get('canvas');
+        const canvas2: HTMLCanvasElement = await html2pdf().set(page2Opt).from(element).toCanvas().get('canvas');
 
-        // addPage 第二個參數是 orientation，傳了會在 h<w 時 swap。省略或傳符合的值
         pdf.addPage([pageWidthMM, h2mm]);
         pdf.addImage(canvas2.toDataURL('image/jpeg', 0.98), 'JPEG', marginMM, marginMM, innerW, h2mm - marginMM * 2);
         triggerDownload(pdf.output('blob'));
@@ -250,7 +249,230 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center bg-slate-200 print:p-0 print:m-0 print:bg-white print:overflow-visible">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center gap-6 md:gap-8 bg-slate-200 print:p-0 print:m-0 print:bg-white print:overflow-visible print:gap-0">
+
+        {/* --- Summary page (compact quote mode only, rendered as leading cover page) --- */}
+        {compactMode && (
+          <div className="bg-white shadow-xl print:shadow-none w-full max-w-[210mm] relative font-serif">
+            <div
+              id="printable-summary"
+              className="w-full h-auto p-[10mm] md:p-[15mm] bg-white text-black box-border flex flex-col"
+            >
+              {/* Header Logo */}
+              <div className="flex justify-center mb-4">
+                <div className="relative h-16 md:h-20 flex items-center justify-center">
+                  <img
+                    src="/logo.png"
+                    alt="Company Logo"
+                    className="h-full w-auto object-contain"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none';
+                      if (e.currentTarget.nextElementSibling) {
+                        (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
+                      }
+                    }}
+                  />
+                  <div className="hidden relative border-[3px] border-black px-3 py-1 rounded-xl">
+                    <h1 className="text-5xl font-serif font-extrabold tracking-widest text-black transform scale-x-125">EIR</h1>
+                  </div>
+                </div>
+              </div>
+
+              {/* Green Title Bar */}
+              <div className="bg-[#8bf136] text-center text-xl font-bold py-1 border-t-2 border-b-2 border-black mb-4 print:print-color-adjust-exact print:bg-[#8bf136]">
+                宇珅活動有限公司報價單
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-x-8 gap-y-1 mb-6 px-2 text-[13px] font-medium leading-relaxed">
+                <div className="space-y-1">
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">客戶名稱</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1 font-bold">{project.client}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">活動名稱</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1 font-bold">{project.name}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">聯繫人</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.contact}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">電話</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.phone}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">統一編號</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.taxId}</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">活動地點</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.location}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">進場日期</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.moveInDate || `${project.date} 09:00`}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">活動日期</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.date} {project.activityTime}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">撤場日期</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1">{project.moveOutDate || `${project.date} 18:00`}</span>
+                  </div>
+                  <div className="flex">
+                    <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">檔期</span>
+                    <span className="px-1">:</span>
+                    <span className="flex-1 font-bold">
+                      {charges.length > 0
+                        ? `${charges.length} 天 (${charges.map(c => c.label).filter(Boolean).join('+')})`
+                        : `${project.period || 1} 天`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sales Info Row */}
+              <div className="flex flex-wrap justify-between px-2 mb-4 text-[13px] border-b-2 border-transparent">
+                <div className="flex gap-2">
+                  <span className="w-[40px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">業務</span>
+                  <span>聯繫人</span>
+                  <span className="font-bold ml-2">{salesName}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span>電話</span>
+                  <span className="font-bold ml-2">{salesPhone}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span>製表日期</span>
+                  <span className="font-mono ml-2">{new Date().toLocaleDateString('zh-TW', {year: '2-digit', month: '2-digit', day: '2-digit'}).replace(/\//g, '')}</span>
+                </div>
+                <div className="flex gap-2">
+                  <span>單號</span>
+                  <span className="font-mono ml-2 font-bold">{project.id.substring(0,6).toUpperCase()}</span>
+                </div>
+              </div>
+
+              {/* Compact table: 類別合併為單列 + periodCharges 合併在同表 */}
+              <div className="w-full mb-2">
+                <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+                  <thead className="bg-white text-center">
+                    <tr>
+                      <th className="border border-black py-1 w-[8%] font-medium">編號</th>
+                      <th className="border border-black py-1 w-[30%] font-medium">品項</th>
+                      <th className="border border-black py-1 w-[14%] font-medium">內容</th>
+                      <th className="border border-black py-1 w-[20%] font-medium">價格</th>
+                      <th className="border border-black py-1 w-[28%] font-medium">備註</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compactCategoryRows.map((row, idx) => (
+                      <tr key={row.cat.id} className="break-inside-avoid">
+                        <td className="border border-black py-2 text-center align-middle font-mono">{idx + 1}</td>
+                        <td className="border border-black py-2 px-2 align-middle font-bold">{row.cat.label}</td>
+                        {idx === 0 && (
+                          <td
+                            className="border border-black py-2 px-2 text-center align-middle text-gray-600"
+                            rowSpan={compactCategoryRows.length}
+                          >
+                            如附件
+                          </td>
+                        )}
+                        <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">{formatCurrency(row.total)}</td>
+                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                      </tr>
+                    ))}
+                    {charges.map((charge, i) => (
+                      <tr key={charge.id} className="break-inside-avoid">
+                        <td className="border border-black py-2 text-center align-middle font-mono">
+                          {compactCategoryRows.length + i + 1}
+                        </td>
+                        <td className="border border-black py-2 px-2 align-middle font-bold">
+                          {charge.label}
+                          {charge.type === 'rate' && (
+                            <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
+                          )}
+                        </td>
+                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                        <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
+                          {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
+                        </td>
+                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals + 大小章 */}
+              <div className="break-inside-avoid mt-auto">
+                <div className="flex justify-between items-end mb-6">
+                  <div className="flex items-center gap-2 pl-4">
+                    <div className="relative w-[75px] h-[75px]">
+                      <img src="/large-stamp.png" alt="大章" className="absolute inset-0 w-full h-full object-contain mix-blend-multiply opacity-90 print:opacity-100 z-10" />
+                    </div>
+                    <div className="relative w-[75px] h-[75px]">
+                      <img src="/small-stamp.png" alt="小章" className="absolute inset-0 w-full h-full object-contain mix-blend-multiply opacity-90 print:opacity-100 z-10" />
+                    </div>
+                  </div>
+                  <div className="w-[280px] border border-black text-sm">
+                    <div className="flex justify-between px-3 py-1 border-b border-black">
+                      <span>未稅合計</span>
+                      <span className="font-mono">{formatCurrency(subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-1 border-b border-black">
+                      <span>稅金</span>
+                      <span className="font-mono">{formatCurrency(tax)}</span>
+                    </div>
+                    <div className="flex justify-between px-3 py-1 font-bold bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact border-b border-black">
+                      <span>合計</span>
+                      <span className="font-mono text-lg">{formatCurrency(total)}</span>
+                    </div>
+                    {project.negotiatedPrice != null && project.negotiatedPrice > 0 && (
+                      <div className="flex justify-between px-3 py-1 font-bold bg-[#8bf136] print:bg-[#8bf136] print:print-color-adjust-exact">
+                        <span>議價後金額</span>
+                        <span className="font-mono text-lg">{formatCurrency(project.negotiatedPrice)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 簽名處 box */}
+                <div className="border border-black flex min-h-[140px]">
+                  <div className="w-[40px] md:w-[50px] border-r border-black flex items-center justify-center bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact">
+                    <span className="writing-vertical-lr text-lg font-bold tracking-[0.3em] py-4">簽名處</span>
+                  </div>
+                  <div className="flex-1 p-4 text-[13px] leading-7 flex items-center relative">
+                    <div className="z-10 relative">
+                      請確認後簽名或蓋章回傳本公司，此報價單簽認即視同合約書，若有任何疑問請與承辦業務確認，本估價單有效期限 15 天，詳細品項請參閱附件。
+                    </div>
+                  </div>
+                  <div className="w-[180px] md:w-[200px] border-l border-black relative overflow-hidden flex items-center justify-center p-2">
+                    <img src="/invoice-stamp.png" alt="發票章" className="w-[140px] h-auto object-contain mix-blend-multiply opacity-90 print:opacity-100" />
+                  </div>
+                </div>
+
+                <div className="text-center text-xs mt-4 font-medium text-gray-500">
+                  (23578)新北市中和區秀峰里景平路71-7號2樓之5
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white shadow-xl print:shadow-none w-full max-w-[210mm] min-h-[297mm] print:min-h-0 print:w-full print:max-w-none relative font-serif">
 
            <div id="printable-content" className="w-full h-auto p-[10mm] md:p-[15mm] bg-white text-black box-border flex flex-col">
@@ -418,63 +640,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   </div>
               </div>}
 
-              {/* --- Compact Quote Table (single-table, items collapsed to category rows) --- */}
-              {compactMode && (
-                <div className="w-full mb-2">
-                  <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-                    <thead className="bg-white text-center">
-                      <tr>
-                        <th className="border border-black py-1 w-[8%] font-medium">編號</th>
-                        <th className="border border-black py-1 w-[30%] font-medium">品項</th>
-                        <th className="border border-black py-1 w-[14%] font-medium">內容</th>
-                        <th className="border border-black py-1 w-[20%] font-medium">價格</th>
-                        <th className="border border-black py-1 w-[28%] font-medium">備註</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {compactCategoryRows.map((row, idx) => (
-                        <tr key={row.cat.id} className="break-inside-avoid">
-                          <td className="border border-black py-2 text-center align-middle font-mono">{idx + 1}</td>
-                          <td className="border border-black py-2 px-2 align-middle font-bold">{row.cat.label}</td>
-                          {idx === 0 && (
-                            <td
-                              className="border border-black py-2 px-2 text-center align-middle text-gray-600"
-                              rowSpan={compactCategoryRows.length}
-                            >
-                              如附件
-                            </td>
-                          )}
-                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
-                            {formatCurrency(row.total)}
-                          </td>
-                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                        </tr>
-                      ))}
-                      {charges.map((charge, i) => (
-                        <tr key={charge.id} className="break-inside-avoid">
-                          <td className="border border-black py-2 text-center align-middle font-mono">
-                            {compactCategoryRows.length + i + 1}
-                          </td>
-                          <td className="border border-black py-2 px-2 align-middle font-bold">
-                            {charge.label}
-                            {charge.type === 'rate' && (
-                              <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
-                            )}
-                          </td>
-                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
-                            {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
-                          </td>
-                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* --- Table Sections (standard per-category rendering) --- */}
-              {!compactMode && <div className="w-full mb-2">
+              {/* --- Table Sections (standard per-category rendering, always full) --- */}
+              <div className="w-full mb-2">
                 {CATEGORIES.map((cat) => {
                   const catItems = visibleItems.filter(i => i.category === cat.id);
                   if (catItems.length === 0) return null;
@@ -632,10 +799,10 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                     </div>
                   );
                 })}
-              </div>}
+              </div>
 
-              {/* --- Period Charges Section (Quote only, skipped in compact mode since rows are merged into main table) --- */}
-              {isQuote && !compactMode && charges.length > 0 && (
+              {/* --- Period Charges Section (Quote only) --- */}
+              {isQuote && charges.length > 0 && (
                 <div className="w-full mb-2">
                   <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
                     檔期費用
@@ -881,50 +1048,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
               </div>
           </div>
 
-          {/* --- Attachment page (compact quote mode only, rendered as sibling for independent page capture) --- */}
-          {compactMode && (
-            <div
-              id="printable-attachment"
-              className="w-full h-auto p-[10mm] md:p-[15mm] bg-white text-black box-border mt-8 md:mt-12 border-t border-slate-200 print:border-0 print:mt-0"
-              style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
-            >
-              <h2 className="text-3xl font-bold text-center mb-6 tracking-[0.25em]">細&nbsp;&nbsp;&nbsp;項</h2>
-              <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-                <thead className="bg-white text-center">
-                  <tr>
-                    <th className="border border-black py-1 w-[18%] font-medium">項目</th>
-                    <th className="border border-black py-1 w-[50%] font-medium">品名</th>
-                    <th className="border border-black py-1 w-[10%] font-medium">數量</th>
-                    <th className="border border-black py-1 w-[10%] font-medium">單位</th>
-                    <th className="border border-black py-1 w-[12%] font-medium">天數</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {CATEGORIES.flatMap(cat => {
-                    const catItems = visibleItems.filter(i => i.category === cat.id);
-                    if (catItems.length === 0) return [];
-                    return catItems.map((item, idx) => (
-                      <tr key={item.id} className="break-inside-avoid">
-                        {idx === 0 && (
-                          <td
-                            rowSpan={catItems.length}
-                            className="border border-black py-2 px-2 text-center align-middle font-bold bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact"
-                            style={{ writingMode: 'vertical-rl', letterSpacing: '0.3em' }}
-                          >
-                            {cat.label}
-                          </td>
-                        )}
-                        <td className="border border-black py-2 px-2 align-middle">{item.name}</td>
-                        <td className="border border-black py-2 px-2 text-center align-middle">{item.quantity}</td>
-                        <td className="border border-black py-2 px-2 text-center align-middle">{item.unit}</td>
-                        <td className="border border-black py-2 px-2 text-center align-middle">{item.days || 1}</td>
-                      </tr>
-                    ));
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </div>
