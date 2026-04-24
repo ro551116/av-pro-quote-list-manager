@@ -345,6 +345,22 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   <label className="block text-slate-500 text-xs font-bold uppercase mb-1">議價後金額（含稅）</label>
                   <input type="number" value={project.negotiatedPrice || ''} onChange={e => handleInfoChange('negotiatedPrice', e.target.value ? parseInt(e.target.value) : undefined)} placeholder="留空則不顯示" className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none" />
                </div>
+               <div>
+                  <label className={`flex items-start gap-2 text-sm font-medium cursor-pointer select-none p-2 rounded transition-colors border ${project.compactQuote ? 'bg-primary-50 border-primary-200 text-primary-800' : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-600'}`}>
+                    <input
+                      type="checkbox"
+                      checked={!!project.compactQuote}
+                      onChange={e => handleInfoChange('compactQuote', e.target.checked)}
+                      className="mt-1 w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-bold">報價單附件模式</span>
+                      <span className="text-[11px] opacity-70 font-normal leading-tight mt-0.5">
+                        報價單第一頁品項合併為類別（音響系統/燈光系統…），細項標「如附件」，合計金額不受品項多寡影響。第二頁自動附上品項明細作為附件。
+                      </span>
+                    </div>
+                  </label>
+               </div>
                {salespeople.length > 0 && (
                <div>
                   <label className="block text-slate-500 text-xs font-bold uppercase mb-1">承辦業務</label>

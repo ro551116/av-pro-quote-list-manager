@@ -35,6 +35,19 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const charges = project.periodCharges || [];
   const baseSubtotal = calcBaseSubtotal(project.items);
 
+  // 精簡模式：只對報價單生效。每個類別合併成一列，價格為該類別客報合計。
+  const compactMode = isQuote && !!project.compactQuote;
+  const compactCategoryRows = compactMode
+    ? CATEGORIES
+        .map(cat => {
+          const items = visibleItems.filter(i => i.category === cat.id);
+          if (items.length === 0) return null;
+          const total = items.reduce((s, i) => s + calcClientTotal(i), 0);
+          return { cat, total };
+        })
+        .filter((x): x is { cat: typeof CATEGORIES[0]; total: number } => x !== null)
+    : [];
+
   const subtotal = charges.length > 0
     ? calcGrandSubtotal(baseSubtotal, charges)
     : baseSubtotal;
@@ -51,7 +64,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const typeLabel = isQuote ? '報價單' : isList ? '器材清單' : isCost ? '成本利潤表' : '發包單';
   const nextLabel = isQuote ? '器材清單' : isList ? '報價單' : '';
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     setIsGenerating(true);
     const element = document.getElementById('printable-content');
 
@@ -72,6 +85,95 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
     const contentHeightMM = element.scrollHeight / pxPerMM + marginMM * 2 + 10;
 
     const filename = `${project.name}_${typeLabel}.pdf`;
+
+    // 共用 html2canvas onclone hook：修掉 CJK justify hack 和 line-height 問題
+    const sharedOnClone = (clonedDoc: Document) => {
+      const style = clonedDoc.createElement('style');
+      style.textContent = `
+        #printable-content *::after,
+        #printable-attachment *::after { content: none !important; }
+        #printable-content [class*="text-justify"],
+        #printable-attachment [class*="text-justify"] {
+          text-align: left !important;
+          text-align-last: auto !important;
+          letter-spacing: normal !important;
+        }
+        #printable-content td, #printable-content th,
+        #printable-attachment td, #printable-attachment th {
+          line-height: 1.5 !important;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          white-space: pre-wrap !important;
+        }
+      `;
+      clonedDoc.head.appendChild(style);
+    };
+
+    const triggerDownload = (blob: Blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    };
+
+    // ---- 附件模式：兩頁 PDF，每頁各自用內容實際高度當頁面高，避免被切斷 ----
+    // html2pdf 的 bundle 沒把 html2canvas/jspdf 暴露到 global，所以透過它自己的 worker chain
+    // 分別取出 jsPDF instance（第一頁）和 canvas（第二頁），在 jsPDF 上 addPage 組兩頁 PDF。
+    const attachmentEl = compactMode ? document.getElementById('printable-attachment') : null;
+    if (compactMode && attachmentEl) {
+      try {
+        // 每頁高度：至少 A4 (297mm) 避免內容短被 jsPDF swap 成橫向；超過 A4 則用實際高度避免被切斷
+        const A4_HEIGHT_MM = 297;
+        const heightBufferMM = 8;
+        const fitPageHeight = (el: HTMLElement) =>
+          Math.max(el.scrollHeight / pxPerMM + marginMM * 2 + heightBufferMM, A4_HEIGHT_MM);
+        const h1mm = fitPageHeight(element);
+        const h2mm = fitPageHeight(attachmentEl);
+        const innerW = pageWidthMM - marginMM * 2;
+        const perPageCanvasOpts = {
+          scale,
+          useCORS: true,
+          letterRendering: true,
+          allowTaint: false,
+          onclone: sharedOnClone,
+        };
+
+        const page1Opt = {
+          margin: marginMM,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: perPageCanvasOpts,
+          // 不傳 orientation 避免 jsPDF 因為 h<w 而 swap 成橫向
+          jsPDF: { unit: 'mm', format: [pageWidthMM, h1mm] },
+          pagebreak: { mode: [] as string[] },
+        };
+        const pdf: any = await html2pdf().set(page1Opt).from(element).toPdf().get('pdf');
+
+        const page2Opt = {
+          margin: 0,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: perPageCanvasOpts,
+          jsPDF: { unit: 'mm', format: [pageWidthMM, h2mm] },
+          pagebreak: { mode: [] as string[] },
+        };
+        const canvas2: HTMLCanvasElement = await html2pdf().set(page2Opt).from(attachmentEl).toCanvas().get('canvas');
+
+        // addPage 第二個參數是 orientation，傳了會在 h<w 時 swap。省略或傳符合的值
+        pdf.addPage([pageWidthMM, h2mm]);
+        pdf.addImage(canvas2.toDataURL('image/jpeg', 0.98), 'JPEG', marginMM, marginMM, innerW, h2mm - marginMM * 2);
+        triggerDownload(pdf.output('blob'));
+        setIsGenerating(false);
+        return;
+      } catch (err) {
+        console.error('Two-page PDF generation failed, falling back to single-page path', err);
+      }
+    }
+
+    // ---- 一般模式（或 fallback）：原本單張長頁邏輯 ----
     const opt = {
       margin:       marginMM,
       filename,
@@ -81,48 +183,16 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
         useCORS: true,
         letterRendering: true,
         allowTaint: false,
-        // 修正 CJK label justify hack 在 html2canvas 下會讓文字疊在一起的問題：
-        // 原本用 `text-justify-last + ::after { width:100% }` 撐開 inline-block，
-        // html2canvas 計算字距會出錯。clone 階段注入 style 關掉 hack。
-        onclone: (clonedDoc: Document) => {
-          const style = clonedDoc.createElement('style');
-          style.textContent = `
-            #printable-content *::after { content: none !important; }
-            #printable-content [class*="text-justify"] {
-              text-align: left !important;
-              text-align-last: auto !important;
-              letter-spacing: normal !important;
-            }
-            /* 修正 html2canvas 對中文小字 line-height 計算錯誤導致備註欄位疊字 */
-            #printable-content td,
-            #printable-content th {
-              line-height: 1.5 !important;
-              word-break: break-word !important;
-              overflow-wrap: break-word !important;
-              white-space: pre-wrap !important;
-            }
-          `;
-          clonedDoc.head.appendChild(style);
-        },
+        onclone: sharedOnClone,
       },
-      jsPDF:        { unit: 'mm', format: [pageWidthMM, contentHeightMM], orientation: 'portrait' },
+      jsPDF:        { unit: 'mm', format: [pageWidthMM, contentHeightMM], orientation: 'portrait' as const },
       pagebreak:    { mode: [] as string[] }
     };
 
     setTimeout(() => {
       // 手動處理 blob → <a download>，比 .save() 在 iOS Safari 上可靠
       html2pdf().set(opt).from(element).outputPdf('blob').then((pdfBlob: Blob) => {
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.rel = 'noopener';
-        // iOS Safari 需要 anchor 真的在 DOM 內
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        // 延遲 revoke，避免某些瀏覽器還沒讀完 blob
-        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        triggerDownload(pdfBlob);
         setIsGenerating(false);
       }).catch((err: any) => {
         console.error('PDF Generation Error:', err);
@@ -348,8 +418,63 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   </div>
               </div>}
 
-              {/* --- Table Sections --- */}
-              <div className="w-full mb-2">
+              {/* --- Compact Quote Table (single-table, items collapsed to category rows) --- */}
+              {compactMode && (
+                <div className="w-full mb-2">
+                  <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+                    <thead className="bg-white text-center">
+                      <tr>
+                        <th className="border border-black py-1 w-[8%] font-medium">編號</th>
+                        <th className="border border-black py-1 w-[30%] font-medium">品項</th>
+                        <th className="border border-black py-1 w-[14%] font-medium">內容</th>
+                        <th className="border border-black py-1 w-[20%] font-medium">價格</th>
+                        <th className="border border-black py-1 w-[28%] font-medium">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compactCategoryRows.map((row, idx) => (
+                        <tr key={row.cat.id} className="break-inside-avoid">
+                          <td className="border border-black py-2 text-center align-middle font-mono">{idx + 1}</td>
+                          <td className="border border-black py-2 px-2 align-middle font-bold">{row.cat.label}</td>
+                          {idx === 0 && (
+                            <td
+                              className="border border-black py-2 px-2 text-center align-middle text-gray-600"
+                              rowSpan={compactCategoryRows.length}
+                            >
+                              如附件
+                            </td>
+                          )}
+                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
+                            {formatCurrency(row.total)}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                        </tr>
+                      ))}
+                      {charges.map((charge, i) => (
+                        <tr key={charge.id} className="break-inside-avoid">
+                          <td className="border border-black py-2 text-center align-middle font-mono">
+                            {compactCategoryRows.length + i + 1}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle font-bold">
+                            {charge.label}
+                            {charge.type === 'rate' && (
+                              <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
+                            )}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
+                            {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* --- Table Sections (standard per-category rendering) --- */}
+              {!compactMode && <div className="w-full mb-2">
                 {CATEGORIES.map((cat) => {
                   const catItems = visibleItems.filter(i => i.category === cat.id);
                   if (catItems.length === 0) return null;
@@ -507,10 +632,10 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                     </div>
                   );
                 })}
-              </div>
+              </div>}
 
-              {/* --- Period Charges Section (Quote only) --- */}
-              {isQuote && charges.length > 0 && (
+              {/* --- Period Charges Section (Quote only, skipped in compact mode since rows are merged into main table) --- */}
+              {isQuote && !compactMode && charges.length > 0 && (
                 <div className="w-full mb-2">
                   <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
                     檔期費用
@@ -755,6 +880,51 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                  </div>
               </div>
           </div>
+
+          {/* --- Attachment page (compact quote mode only, rendered as sibling for independent page capture) --- */}
+          {compactMode && (
+            <div
+              id="printable-attachment"
+              className="w-full h-auto p-[10mm] md:p-[15mm] bg-white text-black box-border mt-8 md:mt-12 border-t border-slate-200 print:border-0 print:mt-0"
+              style={{ breakBefore: 'page', pageBreakBefore: 'always' }}
+            >
+              <h2 className="text-3xl font-bold text-center mb-6 tracking-[0.25em]">細&nbsp;&nbsp;&nbsp;項</h2>
+              <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+                <thead className="bg-white text-center">
+                  <tr>
+                    <th className="border border-black py-1 w-[18%] font-medium">項目</th>
+                    <th className="border border-black py-1 w-[50%] font-medium">品名</th>
+                    <th className="border border-black py-1 w-[10%] font-medium">數量</th>
+                    <th className="border border-black py-1 w-[10%] font-medium">單位</th>
+                    <th className="border border-black py-1 w-[12%] font-medium">天數</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CATEGORIES.flatMap(cat => {
+                    const catItems = visibleItems.filter(i => i.category === cat.id);
+                    if (catItems.length === 0) return [];
+                    return catItems.map((item, idx) => (
+                      <tr key={item.id} className="break-inside-avoid">
+                        {idx === 0 && (
+                          <td
+                            rowSpan={catItems.length}
+                            className="border border-black py-2 px-2 text-center align-middle font-bold bg-gray-50 print:bg-gray-50 print:print-color-adjust-exact"
+                            style={{ writingMode: 'vertical-rl', letterSpacing: '0.3em' }}
+                          >
+                            {cat.label}
+                          </td>
+                        )}
+                        <td className="border border-black py-2 px-2 align-middle">{item.name}</td>
+                        <td className="border border-black py-2 px-2 text-center align-middle">{item.quantity}</td>
+                        <td className="border border-black py-2 px-2 text-center align-middle">{item.unit}</td>
+                        <td className="border border-black py-2 px-2 text-center align-middle">{item.days || 1}</td>
+                      </tr>
+                    ));
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>

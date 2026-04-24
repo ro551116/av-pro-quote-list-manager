@@ -61,6 +61,7 @@ export interface Project {
   taxRate: number; // e.g., 0.05 for 5%
   negotiatedPrice?: number; // 議價後金額（含稅）
   salesId?: string; // 業務人員 ID
+  compactQuote?: boolean; // 報價單精簡模式：品項合併為類別，細項「如附件」
   updatedAt: number;
 }
 
