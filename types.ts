@@ -39,9 +39,22 @@ export interface SalesPerson {
   phone: string;
 }
 
+export interface Customer {
+  id: string;
+  name: string;
+  taxId?: string;
+  contact?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  note?: string;
+  updatedAt: number;
+}
+
 export interface Project {
   id: string;
   name: string;
+  customerId?: string;
   client: string;
   date: string; // Main sorting date (YYYY-MM-DD)
   activityTime?: string; // E.g. "13:00-17:00"
@@ -65,4 +78,4 @@ export interface Project {
   updatedAt: number;
 }
 
-export type ViewMode = 'dashboard' | 'editor' | 'preview_quote' | 'preview_list' | 'preview_subcontract' | 'preview_cost';
+export type ViewMode = 'dashboard' | 'customers' | 'editor' | 'preview_quote' | 'preview_list' | 'preview_subcontract' | 'preview_cost';

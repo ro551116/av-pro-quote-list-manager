@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Project, ViewMode, Subcontract, PeriodCharge, SalesPerson } from './types';
+import { Project, ViewMode, Subcontract, PeriodCharge, SalesPerson, Customer } from './types';
 import { INITIAL_ITEMS } from './constants';
 import { generateId } from './utils/helpers';
 
@@ -19,14 +19,24 @@ const migratePeriodToCharges = (period: number): PeriodCharge[] => {
 import { ProjectCard } from './components/ProjectCard';
 import { ProjectEditor } from './components/ProjectEditor';
 import { PrintLayout } from './components/PrintLayout';
-import { PlusCircle, Search, Trash2, Settings } from 'lucide-react';
+import { CustomerManager } from './components/CustomerManager';
+import { PlusCircle, Search, Trash2, Settings, Users } from 'lucide-react';
 
 const DEFAULT_SALESPEOPLE: SalesPerson[] = [
   { id: 'default', name: '林宇珅', phone: '0912-345-678' },
 ];
 
+const ensureOk = async (response: Response) => {
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `HTTP ${response.status}`);
+  }
+  return response;
+};
+
 const App: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -65,24 +75,38 @@ const App: React.FC = () => {
     setSalespeople(filtered);
     setShowSettings(false);
     try {
-      await fetch('/api/settings', {
+      const response = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ salespeople: JSON.stringify(filtered) }),
       });
+      await ensureOk(response);
     } catch (err) {
       console.error('Failed to save settings', err);
     }
   };
 
-  // Fetch projects on mount
+  // Fetch customers and projects together so customer matching is ready before editing.
   useEffect(() => {
-    fetch('/api/projects')
-      .then(res => res.json())
-      .then((data: Project[]) => {
+    Promise.all([
+      fetch('/api/customers').then(ensureOk).then(res => res.json() as Promise<Customer[]>),
+      fetch('/api/projects').then(ensureOk).then(res => res.json() as Promise<Project[]>),
+    ])
+      .then(([customerData, data]) => {
+        setCustomers(customerData.map(customer => ({
+          ...customer,
+          taxId: customer.taxId || '',
+          contact: customer.contact || '',
+          phone: customer.phone || '',
+          email: customer.email || '',
+          address: customer.address || '',
+          note: customer.note || '',
+        })));
+
         // Migration logic: Ensure new fields exist for old projects
         const migratedData = data.map(p => ({
             ...p,
+            customerId: p.customerId || '',
             phone: p.phone || '',
             taxId: p.taxId || '',
             activityTime: p.activityTime || '',
@@ -120,42 +144,68 @@ const App: React.FC = () => {
         }
       })
       .catch(err => {
-        console.error('Failed to fetch projects', err);
+        console.error('Failed to fetch initial data', err);
         setIsLoading(false);
       });
   }, []);
 
-  const handleCreateProject = async () => {
+  const buildNewProject = (customer?: Customer, sourceProject?: Project): Project => {
     const today = new Date().toISOString().split('T')[0];
-    const newProject: Project = {
+    const idMap = new Map<string, string>();
+    const items = sourceProject
+      ? sourceProject.items.map(item => {
+          const nextId = generateId();
+          idMap.set(item.id, nextId);
+          return {
+            ...item,
+            id: nextId,
+            subItems: Array.isArray(item.subItems) ? [...item.subItems] : [],
+          };
+        })
+      : INITIAL_ITEMS.map(i => ({ ...i, id: generateId(), costPrice: 0 }));
+
+    return {
       id: generateId(),
-      name: '新專案 (New Project)',
-      client: '',
+      name: sourceProject ? `${sourceProject.name} - 複製` : '新專案 (New Project)',
+      customerId: customer?.id,
+      client: customer?.name || '',
       date: today,
-      activityTime: '13:00-17:00',
-      location: '',
-      contact: '',
-      phone: '',
-      taxId: '',
+      activityTime: sourceProject?.activityTime || '13:00-17:00',
+      location: sourceProject?.location || '',
+      contact: customer?.contact || '',
+      phone: customer?.phone || '',
+      taxId: customer?.taxId || '',
       moveInDate: `${today} 09:00`,
       moveOutDate: `${today} 18:00`,
-      period: 1,
-      periodCharges: [{ id: generateId(), label: '活動日', type: 'rate' as const, value: 1.0 }],
-      items: INITIAL_ITEMS.map(i => ({ ...i, id: generateId(), costPrice: 0 })),
-      subcontracts: [],
-      taxRate: 0.05,
+      period: sourceProject?.period ?? 1,
+      periodCharges: sourceProject?.periodCharges
+        ? sourceProject.periodCharges.map(charge => ({ ...charge, id: generateId() }))
+        : [{ id: generateId(), label: '活動日', type: 'rate' as const, value: 1.0 }],
+      items,
+      subcontracts: sourceProject?.subcontracts?.map(subcontract => ({
+        ...subcontract,
+        id: generateId(),
+        itemIds: subcontract.itemIds.map(id => idMap.get(id)).filter((id): id is string => !!id),
+      })) || [],
+      taxRate: sourceProject?.taxRate ?? 0.05,
+      salesId: sourceProject?.salesId,
+      compactQuote: sourceProject?.compactQuote,
       updatedAt: Date.now()
     };
+  };
+
+  const persistNewProject = async (newProject: Project) => {
     setProjects(prev => [newProject, ...prev]);
     setCurrentProjectId(newProject.id);
     setViewMode('editor');
 
     try {
-      await fetch('/api/projects', {
+      const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newProject)
       });
+      await ensureOk(response);
     } catch (error) {
       console.error('Failed to save new project', error);
       setProjects(prev => prev.filter(p => p.id !== newProject.id));
@@ -164,19 +214,70 @@ const App: React.FC = () => {
     }
   };
 
+  const handleCreateProject = async () => {
+    await persistNewProject(buildNewProject());
+  };
+
+  const handleCreateProjectForCustomer = async (customer: Customer, sourceProject?: Project) => {
+    await persistNewProject(buildNewProject(customer, sourceProject));
+  };
+
+  const syncCustomerFromProject = async (project: Project): Promise<Project> => {
+    const clientName = project.client.trim();
+    if (!clientName) return project;
+
+    const existingCustomer =
+      (project.customerId ? customers.find(customer => customer.id === project.customerId) : undefined) ||
+      customers.find(customer => customer.name.trim().toLowerCase() === clientName.toLowerCase());
+
+    const customerToSave: Customer = {
+      id: existingCustomer?.id || generateId(),
+      name: clientName,
+      taxId: project.taxId || existingCustomer?.taxId || '',
+      contact: project.contact || existingCustomer?.contact || '',
+      phone: project.phone || existingCustomer?.phone || '',
+      email: existingCustomer?.email || '',
+      address: existingCustomer?.address || '',
+      note: existingCustomer?.note || '',
+      updatedAt: Date.now(),
+    };
+
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerToSave),
+      });
+      await ensureOk(response);
+    } catch (error) {
+      console.error('Failed to sync customer from project', error);
+      return existingCustomer ? { ...project, customerId: existingCustomer.id } : { ...project, customerId: '' };
+    }
+
+    setCustomers(prev => {
+      const exists = prev.some(customer => customer.id === customerToSave.id);
+      if (exists) return prev.map(customer => customer.id === customerToSave.id ? customerToSave : customer);
+      return [customerToSave, ...prev];
+    });
+
+    return { ...project, customerId: customerToSave.id };
+  };
+
   const handleSaveProject = async (updatedProject: Project) => {
-    const projectToSave = { ...updatedProject, updatedAt: Date.now() };
+    const syncedProject = await syncCustomerFromProject(updatedProject);
+    const projectToSave = { ...syncedProject, updatedAt: Date.now() };
     const previousProjects = projects;
     setProjects(prev => prev.map(p => p.id === projectToSave.id ? projectToSave : p));
     setViewMode('dashboard');
     setCurrentProjectId(null);
 
     try {
-      await fetch('/api/projects', {
+      const response = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(projectToSave)
       });
+      await ensureOk(response);
     } catch (error) {
       console.error('Failed to update project', error);
       setProjects(previousProjects);
@@ -187,6 +288,40 @@ const App: React.FC = () => {
     setProjectToDelete(id);
   };
 
+  const handleSaveCustomer = async (customer: Customer) => {
+    const customerToSave = { ...customer, updatedAt: Date.now() };
+    const previousCustomers = customers;
+    setCustomers(prev => {
+      const exists = prev.some(c => c.id === customerToSave.id);
+      if (exists) return prev.map(c => c.id === customerToSave.id ? customerToSave : c);
+      return [customerToSave, ...prev];
+    });
+
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customerToSave),
+      });
+      await ensureOk(response);
+    } catch (error) {
+      console.error('Failed to save customer', error);
+      setCustomers(previousCustomers);
+    }
+  };
+
+  const handleDeleteCustomer = async (id: string) => {
+    const previousCustomers = customers;
+    setCustomers(prev => prev.filter(c => c.id !== id));
+    try {
+      const response = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+      await ensureOk(response);
+    } catch (error) {
+      console.error('Failed to delete customer', error);
+      setCustomers(previousCustomers);
+    }
+  };
+
   const confirmDelete = async () => {
     if (projectToDelete) {
       const idToDelete = projectToDelete;
@@ -195,9 +330,10 @@ const App: React.FC = () => {
       setProjectToDelete(null);
 
       try {
-        await fetch(`/api/projects/${idToDelete}`, {
+        const response = await fetch(`/api/projects/${idToDelete}`, {
           method: 'DELETE'
         });
+        await ensureOk(response);
       } catch (error) {
         console.error('Failed to delete project', error);
         if (deletedProject) {
@@ -232,7 +368,20 @@ const App: React.FC = () => {
   }
 
   if (viewMode === 'editor' && currentProjectId) {
-    return <ProjectEditor project={getActiveProject()} salespeople={salespeople} onSave={handleSaveProject} onCancel={() => setViewMode('dashboard')} />;
+    return <ProjectEditor project={getActiveProject()} customers={customers} salespeople={salespeople} onSave={handleSaveProject} onCancel={() => setViewMode('dashboard')} />;
+  }
+
+  if (viewMode === 'customers') {
+    return (
+      <CustomerManager
+        customers={customers}
+        projects={projects}
+        onSave={handleSaveCustomer}
+        onDelete={handleDeleteCustomer}
+        onCreateProject={handleCreateProjectForCustomer}
+        onBack={() => setViewMode('dashboard')}
+      />
+    );
   }
 
   // Quote / List toggle
@@ -304,6 +453,12 @@ const App: React.FC = () => {
             title="設定"
           >
             <Settings size={20} />
+          </button>
+          <button
+            onClick={() => setViewMode('customers')}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded-full font-bold transition-colors whitespace-nowrap"
+          >
+            <Users size={18} /> 客戶管理
           </button>
           <button
             onClick={handleCreateProject}

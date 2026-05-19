@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson } from '../types';
+import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson, Customer } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS } from '../constants';
 import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency } from '../utils/helpers';
 import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
 
 interface ProjectEditorProps {
   project: Project;
+  customers?: Customer[];
   salespeople?: SalesPerson[];
   onSave: (project: Project) => void;
   onCancel: () => void;
 }
 
-export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, salespeople = [], onSave, onCancel }) => {
+export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, customers = [], salespeople = [], onSave, onCancel }) => {
   const [project, setProject] = useState<Project>(JSON.parse(JSON.stringify(initialProject)));
   const [activeCategoryModal, setActiveCategoryModal] = useState<Category | null>(null);
 
@@ -24,6 +25,23 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
   const handleInfoChange = (field: keyof Project, value: any) => {
     setProject(prev => ({ ...prev, [field]: value }));
+  };
+
+  const applyCustomer = (customerId: string) => {
+    if (!customerId) {
+      setProject(prev => ({ ...prev, customerId: '' }));
+      return;
+    }
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer) return;
+    setProject(prev => ({
+      ...prev,
+      customerId: customer.id,
+      client: customer.name,
+      taxId: customer.taxId || '',
+      contact: customer.contact || '',
+      phone: customer.phone || '',
+    }));
   };
 
   // Helper to convert "YYYY-MM-DD HH:mm" to "YYYY-MM-DDTHH:mm" for input
@@ -305,6 +323,21 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
             {/* Column 1: Client Info */}
             <div className="space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
                <h4 className="text-sm font-bold text-slate-700 mb-2 border-b border-slate-200 pb-1">客戶資訊</h4>
+               {customers.length > 0 && (
+               <div>
+                  <label className="block text-slate-500 text-xs font-bold uppercase mb-1">套用客戶資料</label>
+                  <select
+                    value={project.customerId || ''}
+                    onChange={e => applyCustomer(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                  >
+                    <option value="">-- 手動輸入 / 不綁定 --</option>
+                    {customers.map(customer => (
+                      <option key={customer.id} value={customer.id}>{customer.name}</option>
+                    ))}
+                  </select>
+               </div>
+               )}
                <div>
                   <label className="block text-slate-500 text-xs font-bold uppercase mb-1">客戶名稱</label>
                   <input type="text" value={project.client} onChange={e => handleInfoChange('client', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none" placeholder="公司或客戶全名" />

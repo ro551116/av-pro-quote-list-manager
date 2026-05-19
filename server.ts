@@ -45,6 +45,11 @@ async function startServer() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS customers (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
   `);
 
   // API Routes
@@ -103,6 +108,45 @@ async function startServer() {
     }
   });
 
+  app.get('/api/customers', async (req, res) => {
+    try {
+      const rows = await db.all('SELECT data FROM customers ORDER BY updatedAt DESC');
+      const customers = rows.map(row => JSON.parse(row.data));
+      res.json(customers);
+    } catch (error) {
+      console.error('Failed to fetch customers:', error);
+      res.status(500).json({ error: 'Failed to fetch customers' });
+    }
+  });
+
+  app.post('/api/customers', async (req, res) => {
+    try {
+      const customer = req.body;
+      if (!customer.id || !customer.name) {
+        return res.status(400).json({ error: 'missing required customer fields: id, name' });
+      }
+      const updatedAt = customer.updatedAt || Date.now();
+      await db.run(
+        'INSERT OR REPLACE INTO customers (id, data, updatedAt) VALUES (?, ?, ?)',
+        [customer.id, JSON.stringify({ ...customer, updatedAt }), updatedAt]
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to save customer:', error);
+      res.status(500).json({ error: 'Failed to save customer' });
+    }
+  });
+
+  app.delete('/api/customers/:id', async (req, res) => {
+    try {
+      await db.run('DELETE FROM customers WHERE id = ?', [req.params.id]);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to delete customer:', error);
+      res.status(500).json({ error: 'Failed to delete customer' });
+    }
+  });
+
   // Quick-create project via GET (for chatbot / web_fetch)
   app.get('/api/projects/create', async (req, res) => {
     try {
@@ -113,6 +157,7 @@ async function startServer() {
       const now = Date.now();
       const project = {
         id: String(now),
+        customerId: q.customerId || '',
         name: q.name,
         client: q.client || '',
         date: q.date || new Date().toISOString().slice(0, 10),
