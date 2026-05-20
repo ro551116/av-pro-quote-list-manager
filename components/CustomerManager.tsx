@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Copy, Edit, FilePlus2, History, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Customer, Project } from '../types';
 import { calcBaseSubtotal, calcGrandSubtotal, formatCurrency, formatDate, generateId } from '../utils/helpers';
@@ -34,6 +34,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
+
+  useEffect(() => {
+    if (!historyCustomer) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setHistoryCustomer(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [historyCustomer]);
 
   const filteredCustomers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -153,13 +161,22 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                       <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase">
                         <History size={14} /> 歷史訂單
                       </div>
-                      <span className="text-[11px] text-slate-400">{customerProjects.length} 筆</span>
+                      {customerProjects.length > 3 ? (
+                        <button
+                          onClick={() => setHistoryCustomer(customer)}
+                          className="text-[11px] text-primary-600 hover:text-primary-700 font-bold hover:underline"
+                        >
+                          全部 {customerProjects.length} 筆 →
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">{customerProjects.length} 筆</span>
+                      )}
                     </div>
                     {customerProjects.length === 0 ? (
                       <div className="text-sm text-slate-400 py-2">尚無此客戶訂單紀錄</div>
                     ) : (
                       <div className="space-y-2">
-                        {customerProjects.slice(0, 4).map(project => (
+                        {customerProjects.slice(0, 3).map(project => (
                           <div key={project.id} className="bg-white border border-slate-200 rounded-lg p-2">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
@@ -176,6 +193,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             </div>
                           </div>
                         ))}
+                        {customerProjects.length > 3 && (
+                          <button
+                            onClick={() => setHistoryCustomer(customer)}
+                            className="w-full text-xs text-slate-400 hover:text-primary-600 py-1 text-center hover:bg-slate-100 rounded transition-colors"
+                          >
+                            還有 {customerProjects.length - 3} 筆…
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -206,6 +231,60 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
           </div>
         )}
       </main>
+
+      {historyCustomer && (() => {
+        const allProjects = getCustomerProjects(historyCustomer);
+        return (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200"
+            onClick={e => { if (e.target === e.currentTarget) setHistoryCustomer(null); }}
+          >
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl border border-slate-100 flex flex-col max-h-[80vh]">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">{historyCustomer.name}</h3>
+                  <p className="text-sm text-slate-500 mt-0.5">全部 {allProjects.length} 筆歷史訂單</p>
+                </div>
+                <button
+                  onClick={() => setHistoryCustomer(null)}
+                  className="p-1.5 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 px-6 py-4 space-y-2">
+                {allProjects.map(project => (
+                  <div key={project.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-800 truncate" title={project.name}>{project.name}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          {formatDate(project.date)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { onCreateProject(historyCustomer, project); setHistoryCustomer(null); }}
+                        className="shrink-0 flex items-center gap-1 bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200 px-3 py-1.5 rounded text-xs font-bold transition-colors"
+                        title="用這張舊單的器材與費用建立新報價"
+                      >
+                        <Copy size={12} /> 沿用
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100">
+                <button
+                  onClick={() => { onCreateProject(historyCustomer); setHistoryCustomer(null); }}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-2.5 rounded-lg text-sm font-bold transition-colors"
+                >
+                  <FilePlus2 size={16} /> 開空白單
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {editingCustomer && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] p-4 animate-in fade-in duration-200">
