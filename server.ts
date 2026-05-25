@@ -161,6 +161,7 @@ async function startServer() {
         name: q.name,
         client: q.client || '',
         date: q.date || new Date().toISOString().slice(0, 10),
+        eventEndDate: q.eventEndDate || q.date || new Date().toISOString().slice(0, 10),
         location: q.location || '',
         contact: q.contact || '',
         phone: q.phone || '',

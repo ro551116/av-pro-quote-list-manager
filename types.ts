@@ -6,6 +6,8 @@ export interface PeriodCharge {
   label: string;          // "活動日", "進場日", "夜間進場費"
   type: 'rate' | 'fixed'; // 百分比 or 固定金額
   value: number;          // rate: 1.0=100%, 0.85=85%; fixed: 5000
+  startDate?: string;     // Optional period start date (YYYY-MM-DD)
+  endDate?: string;       // Optional period end date (YYYY-MM-DD)
 }
 
 export interface Subcontract {
@@ -57,6 +59,7 @@ export interface Project {
   customerId?: string;
   client: string;
   date: string; // Main sorting date (YYYY-MM-DD)
+  eventEndDate?: string; // Optional event/exhibition end date (YYYY-MM-DD)
   activityTime?: string; // E.g. "13:00-17:00"
   location: string;
   contact: string;

@@ -8,8 +8,23 @@ export const formatCurrency = (amount: number): string => {
 
 export const formatDate = (dateString: string): string => {
   if (!dateString) return '';
-  const date = new Date(dateString);
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(dateString);
   return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+};
+
+export const formatDateRange = (startDate?: string, endDate?: string): string => {
+  if (!startDate) return '';
+  if (!endDate || endDate === startDate) return formatDate(startDate);
+  return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+};
+
+export const formatPeriodChargeLabel = (charge: PeriodCharge): string => {
+  const dateRange = formatDateRange(charge.startDate, charge.endDate);
+  if (!dateRange) return charge.label;
+  return charge.label ? `${charge.label} (${dateRange})` : dateRange;
 };
 
 /** 客報總價 = 數量 × 單價（單日） */

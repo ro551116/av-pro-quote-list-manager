@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson, Customer } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS } from '../constants';
-import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency } from '../utils/helpers';
+import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency, formatDateRange } from '../utils/helpers';
 import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
 
 interface ProjectEditorProps {
@@ -53,6 +53,18 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
   // Helper to convert "YYYY-MM-DDTHH:mm" from input to "YYYY-MM-DD HH:mm"
   const fromInputDateTime = (str: string) => {
     return str.replace('T', ' ');
+  };
+
+  const handleEventStartChange = (value: string) => {
+    setProject(prev => ({
+      ...prev,
+      date: value,
+      eventEndDate: !prev.eventEndDate || prev.eventEndDate < value ? value : prev.eventEndDate,
+    }));
+  };
+
+  const handleEventEndChange = (value: string) => {
+    setProject(prev => ({ ...prev, eventEndDate: value || prev.date }));
   };
 
   const toggleExpandItem = (id: string) => {
@@ -429,17 +441,31 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
                <div>
                   <label className="block text-slate-500 text-xs font-bold uppercase mb-1 flex items-center gap-1">
-                     <Calendar size={12} /> 活動日期 (Event Date)
+                     <Calendar size={12} /> 活動 / 展期日期 (Event Period)
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                        type="date"
-                        value={project.date}
-                        onChange={e => handleInfoChange('date', e.target.value)}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none font-medium"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <span className="block text-[10px] text-slate-400 font-bold mb-1">開始</span>
+                      <input
+                          type="date"
+                          value={project.date}
+                          onChange={e => handleEventStartChange(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none font-medium"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-400 font-bold mb-1">結束</span>
+                      <input
+                          type="date"
+                          value={project.eventEndDate || project.date}
+                          min={project.date}
+                          onChange={e => handleEventEndChange(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none font-medium"
+                      />
+                    </div>
                     <div className="relative">
-                        <Clock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <span className="block text-[10px] text-slate-400 font-bold mb-1">時間</span>
+                        <Clock size={16} className="absolute left-3 top-[calc(50%+10px)] -translate-y-1/2 text-slate-400" />
                         <input
                             type="text"
                             value={project.activityTime || ''}
@@ -448,6 +474,9 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                             placeholder="時間 (e.g. 13:00-17:00)"
                         />
                     </div>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    顯示：{formatDateRange(project.date, project.eventEndDate)}
                   </div>
                </div>
 
@@ -514,7 +543,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   {/* Label */}
-                  <div className="md:col-span-4">
+                  <div className="md:col-span-3">
                     <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">標籤</label>
                     <div className="relative">
                       <input
@@ -531,8 +560,30 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                     </div>
                   </div>
 
-                  {/* Type Toggle */}
+                  {/* Date Range */}
                   <div className="md:col-span-3">
+                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">日期</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={charge.startDate || ''}
+                        onChange={e => updateCharge(charge.id, 'startDate', e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                        aria-label={`${charge.label || '檔期'}開始日期`}
+                      />
+                      <input
+                        type="date"
+                        value={charge.endDate || charge.startDate || ''}
+                        min={charge.startDate || undefined}
+                        onChange={e => updateCharge(charge.id, 'endDate', e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                        aria-label={`${charge.label || '檔期'}結束日期`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Type Toggle */}
+                  <div className="md:col-span-2">
                     <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">類型</label>
                     <div className="flex bg-white border border-slate-300 rounded-lg overflow-hidden">
                       <button
@@ -551,7 +602,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   </div>
 
                   {/* Value */}
-                  <div className="md:col-span-3">
+                  <div className="md:col-span-2">
                     <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">
                       {charge.type === 'rate' ? '比例' : '金額'}
                     </label>

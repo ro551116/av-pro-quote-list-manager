@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Project, Category, Subcontract, SalesPerson } from '../types';
 import { CATEGORIES } from '../constants';
-import { formatCurrency, formatDate, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal } from '../utils/helpers';
+import { formatCurrency, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatDateRange, formatPeriodChargeLabel } from '../utils/helpers';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
 
 // Declare html2pdf for TypeScript
@@ -40,6 +40,11 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
     Math.abs(charges[0].value - 1.0) < 0.001;
   const displayCharges = hideTrivialCharge ? [] : charges;
   const baseSubtotal = calcBaseSubtotal(project.items);
+  const eventDateText = formatDateRange(project.date, project.eventEndDate);
+  const eventDateTimeText = [eventDateText, project.activityTime].filter(Boolean).join(' ');
+  const periodSummary = displayCharges.length > 0
+    ? displayCharges.map(formatPeriodChargeLabel).filter(Boolean).join(' + ')
+    : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`);
 
   // 精簡模式：只對報價單生效。每個類別合併成一列，價格為該類別客報合計。
   const compactMode = isQuote && !!project.compactQuote;
@@ -332,7 +337,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   <div className="flex">
                     <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">活動日期</span>
                     <span className="px-1">:</span>
-                    <span className="flex-1">{project.date} {project.activityTime}</span>
+                    <span className="flex-1">{eventDateTimeText}</span>
                   </div>
                   <div className="flex">
                     <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">撤場日期</span>
@@ -343,9 +348,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                     <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">檔期</span>
                     <span className="px-1">:</span>
                     <span className="flex-1 font-bold">
-                      {displayCharges.length > 0
-                        ? `${displayCharges.length} 天 (${displayCharges.map(c => c.label).filter(Boolean).join('+')})`
-                        : `${project.period || 1} 天`}
+                      {periodSummary}
                     </span>
                   </div>
                 </div>
@@ -407,7 +410,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                           {compactCategoryRows.length + i + 1}
                         </td>
                         <td className="border border-black py-2 px-2 align-middle font-bold">
-                          {charge.label}
+                          {formatPeriodChargeLabel(charge)}
                           {charge.type === 'rate' && (
                             <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
                           )}
@@ -620,7 +623,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                      <div className="flex">
                         <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">活動日期</span>
                         <span className="px-1">:</span>
-                        <span className="flex-1">{project.date} {project.activityTime}</span>
+                        <span className="flex-1">{eventDateTimeText}</span>
                      </div>
                      <div className="flex">
                         <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">撤場日期</span>
@@ -631,10 +634,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                         <span className="w-[70px] text-justify-last text-justify inline-block after:content-[''] after:inline-block after:w-full">檔期</span>
                         <span className="px-1">:</span>
                         <span className="flex-1 font-bold">
-                          {displayCharges.length > 0
-                            ? `${displayCharges.length} 天 (${displayCharges.map(c => c.label).filter(Boolean).join('+')})`
-                            : `${project.period || 1} 天`
-                          }
+                          {periodSummary}
                         </span>
                      </div>
                  </div>
@@ -840,7 +840,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                       {displayCharges.map((charge) => (
                         <tr key={charge.id} className="break-inside-avoid">
                           <td className="border border-black py-2 px-2 font-bold">
-                            {charge.label}
+                            {formatPeriodChargeLabel(charge)}
                             {charge.type === 'rate' && (
                               <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
                             )}

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Copy, Edit, FilePlus2, History, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Customer, Project } from '../types';
-import { calcBaseSubtotal, calcGrandSubtotal, formatCurrency, formatDate, generateId } from '../utils/helpers';
+import { calcBaseSubtotal, calcGrandSubtotal, formatCurrency, formatDateRange, generateId } from '../utils/helpers';
 
 interface CustomerManagerProps {
   customers: Customer[];
@@ -181,7 +181,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <div className="text-sm font-bold text-slate-700 truncate" title={project.name}>{project.name}</div>
-                                <div className="text-[11px] text-slate-400">{formatDate(project.date)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}</div>
+                                <div className="text-[11px] text-slate-400">{formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}</div>
                               </div>
                               <button
                                 onClick={() => onCreateProject(customer, project)}
@@ -259,7 +259,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                       <div className="min-w-0">
                         <div className="text-sm font-bold text-slate-800 truncate" title={project.name}>{project.name}</div>
                         <div className="text-xs text-slate-400 mt-0.5">
-                          {formatDate(project.date)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}
+                          {formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}
                         </div>
                       </div>
                       <button

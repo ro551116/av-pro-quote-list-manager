@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
-import { formatDate, formatCurrency, calcBaseSubtotal, calcGrandSubtotal } from '../utils/helpers';
+import { formatDateRange, formatCurrency, calcBaseSubtotal, calcGrandSubtotal } from '../utils/helpers';
 import { Edit, Trash2, FileText, List, Send, ChevronDown, BarChart3 } from 'lucide-react';
 
 interface ProjectCardProps {
@@ -52,7 +52,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDel
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-bold text-slate-800 mb-1 line-clamp-1" title={project.name}>{project.name}</h3>
-          <p className="text-slate-500 text-sm">{project.client || '未填寫客戶'} • {formatDate(project.date)}</p>
+          <p className="text-slate-500 text-sm">{project.client || '未填寫客戶'} • {formatDateRange(project.date, project.eventEndDate)}</p>
         </div>
       </div>
 
