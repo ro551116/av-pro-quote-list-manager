@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Copy, Edit, FilePlus2, History, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { Archive, ArrowLeft, Copy, Edit, FilePlus2, History, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Customer, Project } from '../types';
 import { calcBaseSubtotal, calcGrandSubtotal, formatCurrency, formatDateRange, generateId } from '../utils/helpers';
 
@@ -180,7 +180,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                           <div key={project.id} className="bg-white border border-slate-200 rounded-lg p-2">
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <div className="text-sm font-bold text-slate-700 truncate" title={project.name}>{project.name}</div>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="text-sm font-bold text-slate-700 truncate" title={project.name}>{project.name}</div>
+                                  {project.archivedAt && (
+                                    <span className="shrink-0 inline-flex items-center gap-1 bg-slate-100 text-slate-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                                      <Archive size={10} /> 已歸檔
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="text-[11px] text-slate-400">{formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}</div>
                               </div>
                               <button
@@ -257,7 +264,14 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                   <div key={project.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-slate-800 truncate" title={project.name}>{project.name}</div>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="text-sm font-bold text-slate-800 truncate" title={project.name}>{project.name}</div>
+                          {project.archivedAt && (
+                            <span className="shrink-0 inline-flex items-center gap-1 bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                              <Archive size={10} /> 已歸檔
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-400 mt-0.5">
                           {formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}
                         </div>

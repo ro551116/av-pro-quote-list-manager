@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
 import { formatDateRange, formatCurrency, calcBaseSubtotal, calcGrandSubtotal } from '../utils/helpers';
-import { Edit, Trash2, FileText, List, Send, ChevronDown, BarChart3 } from 'lucide-react';
+import { Edit, Trash2, FileText, List, Send, ChevronDown, BarChart3, Archive, RotateCcw } from 'lucide-react';
 
 interface ProjectCardProps {
   project: Project;
   onEdit: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
   onDelete: (id: string) => void;
   onViewQuote: (id: string) => void;
   onViewList: (id: string) => void;
@@ -13,9 +15,13 @@ interface ProjectCardProps {
   onViewSubcontract: (projectId: string, subcontractId: string) => void;
 }
 
-export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDelete, onViewQuote, onViewList, onViewCost, onViewSubcontract }) => {
+export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onArchive, onRestore, onDelete, onViewQuote, onViewList, onViewCost, onViewSubcontract }) => {
   const [showSubMenu, setShowSubMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isArchived = Boolean(project.archivedAt);
+  const archivedDate = project.archivedAt
+    ? new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(project.archivedAt))
+    : '';
 
   const baseSubtotal = calcBaseSubtotal(project.items);
   const charges = project.periodCharges || [];
@@ -48,11 +54,16 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDel
   };
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5 hover:border-primary-300 hover:shadow-lg transition-all shadow-sm group flex flex-col h-full">
+    <div className={`${isArchived ? 'bg-slate-50 border-slate-300' : 'bg-white border-slate-200 hover:border-primary-300'} rounded-xl border p-5 hover:shadow-lg transition-all shadow-sm group flex flex-col h-full`}>
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-bold text-slate-800 mb-1 line-clamp-1" title={project.name}>{project.name}</h3>
           <p className="text-slate-500 text-sm">{project.client || '未填寫客戶'} • {formatDateRange(project.date, project.eventEndDate)}</p>
+          {isArchived && (
+            <div className="inline-flex items-center gap-1.5 mt-2 bg-slate-200 text-slate-600 text-xs font-bold px-2 py-1 rounded-full">
+              <Archive size={12} /> 已歸檔 {archivedDate}
+            </div>
+          )}
         </div>
       </div>
 
@@ -128,20 +139,43 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onDel
         </div>
 
         {/* Row 2: action buttons */}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={(e) => { e.stopPropagation(); onEdit(project.id); }}
-            className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-sm transition-colors"
-          >
-            <Edit size={16} /> 編輯
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
-            className="flex items-center justify-center gap-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 hover:border-red-200 py-2 rounded-lg text-sm transition-colors"
-          >
-            <Trash2 size={16} /> 刪除
-          </button>
-        </div>
+        {isArchived ? (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onRestore(project.id); }}
+              className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white py-2 rounded-lg text-sm transition-colors"
+            >
+              <RotateCcw size={16} /> 復原
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+              className="flex items-center justify-center gap-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 hover:border-red-200 py-2 rounded-lg text-sm transition-colors"
+            >
+              <Trash2 size={16} /> 刪除
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(project.id); }}
+              className="flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-lg text-sm transition-colors"
+            >
+              <Edit size={16} /> 編輯
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onArchive(project.id); }}
+              className="flex items-center justify-center gap-2 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 hover:border-amber-300 py-2 rounded-lg text-sm transition-colors"
+            >
+              <Archive size={16} /> 歸檔
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+              className="flex items-center justify-center gap-2 bg-white hover:bg-red-50 text-red-600 border border-red-100 hover:border-red-200 py-2 rounded-lg text-sm transition-colors"
+            >
+              <Trash2 size={16} /> 刪除
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

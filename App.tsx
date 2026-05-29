@@ -20,7 +20,7 @@ import { ProjectCard } from './components/ProjectCard';
 import { ProjectEditor } from './components/ProjectEditor';
 import { PrintLayout } from './components/PrintLayout';
 import { CustomerManager } from './components/CustomerManager';
-import { PlusCircle, Search, Trash2, Settings, Users } from 'lucide-react';
+import { PlusCircle, Search, Trash2, Settings, Users, Archive } from 'lucide-react';
 
 const DEFAULT_SALESPEOPLE: SalesPerson[] = [
   { id: 'default', name: '林宇珅', phone: '0912-345-678' },
@@ -43,6 +43,7 @@ const App: React.FC = () => {
   const [currentSubcontractId, setCurrentSubcontractId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
+  const [projectShelf, setProjectShelf] = useState<'active' | 'archived'>('active');
 
   // Salespeople settings
   const [salespeople, setSalespeople] = useState<SalesPerson[]>(DEFAULT_SALESPEOPLE);
@@ -116,6 +117,7 @@ const App: React.FC = () => {
             period: p.period ?? 1,
             periodCharges: p.periodCharges || migratePeriodToCharges(p.period ?? 1),
             subcontracts: p.subcontracts || [],
+            archivedAt: typeof p.archivedAt === 'number' ? p.archivedAt : null,
             items: p.items.map(item => {
                 // Migrate old category IDs
                 const catMap: Record<string, string> = { video: 'projection', manpower: 'crew', photography: 'projection', livestream: 'led', print: 'stage' };
@@ -192,6 +194,7 @@ const App: React.FC = () => {
       taxRate: sourceProject?.taxRate ?? 0.05,
       salesId: sourceProject?.salesId,
       compactQuote: sourceProject?.compactQuote,
+      archivedAt: null,
       updatedAt: Date.now()
     };
   };
@@ -199,6 +202,7 @@ const App: React.FC = () => {
   const persistNewProject = async (newProject: Project) => {
     setProjects(prev => [newProject, ...prev]);
     setCurrentProjectId(newProject.id);
+    setProjectShelf('active');
     setViewMode('editor');
 
     try {
@@ -290,6 +294,46 @@ const App: React.FC = () => {
     setProjectToDelete(id);
   };
 
+  const handleArchiveProject = async (id: string) => {
+    const project = projects.find(p => p.id === id);
+    if (!project) return;
+    const previousProjects = projects;
+    const projectToSave = { ...project, archivedAt: Date.now(), updatedAt: Date.now() };
+    setProjects(prev => prev.map(p => p.id === id ? projectToSave : p));
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectToSave)
+      });
+      await ensureOk(response);
+    } catch (error) {
+      console.error('Failed to archive project', error);
+      setProjects(previousProjects);
+    }
+  };
+
+  const handleRestoreProject = async (id: string) => {
+    const project = projects.find(p => p.id === id);
+    if (!project) return;
+    const previousProjects = projects;
+    const projectToSave = { ...project, archivedAt: null, updatedAt: Date.now() };
+    setProjects(prev => prev.map(p => p.id === id ? projectToSave : p));
+
+    try {
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectToSave)
+      });
+      await ensureOk(response);
+    } catch (error) {
+      console.error('Failed to restore project', error);
+      setProjects(previousProjects);
+    }
+  };
+
   const handleSaveCustomer = async (customer: Customer) => {
     const customerToSave = { ...customer, updatedAt: Date.now() };
     const previousCustomers = customers;
@@ -352,9 +396,12 @@ const App: React.FC = () => {
     return proj?.subcontracts?.find(s => s.id === currentSubcontractId);
   };
 
-  const filteredProjects = projects.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.client.toLowerCase().includes(searchTerm.toLowerCase())
+  const activeCount = projects.filter(p => !p.archivedAt).length;
+  const archivedCount = projects.filter(p => Boolean(p.archivedAt)).length;
+  const visibleProjects = projects.filter(p => projectShelf === 'archived' ? Boolean(p.archivedAt) : !p.archivedAt);
+  const filteredProjects = visibleProjects.filter(p =>
+    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.client || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Render Logic
@@ -438,8 +485,30 @@ const App: React.FC = () => {
           <p className="text-slate-500 text-sm mt-1">專業器材租賃與報價系統</p>
         </div>
 
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="relative flex-1 md:w-64">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3 w-full lg:w-auto">
+          <div className="flex bg-slate-100 border border-slate-200 rounded-full p-1 w-full sm:w-auto">
+            <button
+              onClick={() => setProjectShelf('active')}
+              className={`flex-1 sm:flex-none px-3 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${
+                projectShelf === 'active'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              進行中 {activeCount}
+            </button>
+            <button
+              onClick={() => setProjectShelf('archived')}
+              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold transition-colors whitespace-nowrap ${
+                projectShelf === 'archived'
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Archive size={14} /> 已歸檔 {archivedCount}
+            </button>
+          </div>
+          <div className="relative flex-1 lg:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
@@ -449,25 +518,27 @@ const App: React.FC = () => {
               className="w-full bg-slate-100 border border-slate-200 rounded-full pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:bg-white outline-none transition-all placeholder-slate-400 text-slate-800"
             />
           </div>
-          <button
-            onClick={() => { setEditingSalespeople(salespeople); setShowSettings(true); }}
-            className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
-            title="設定"
-          >
-            <Settings size={20} />
-          </button>
-          <button
-            onClick={() => setViewMode('customers')}
-            className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded-full font-bold transition-colors whitespace-nowrap"
-          >
-            <Users size={18} /> 客戶管理
-          </button>
-          <button
-            onClick={handleCreateProject}
-            className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-5 py-2 rounded-full font-bold transition-colors shadow-lg shadow-primary-500/20 whitespace-nowrap"
-          >
-            <PlusCircle size={18} /> 新增專案
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setEditingSalespeople(salespeople); setShowSettings(true); }}
+              className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700 transition-colors"
+              title="設定"
+            >
+              <Settings size={20} />
+            </button>
+            <button
+              onClick={() => setViewMode('customers')}
+              className="flex flex-1 sm:flex-none items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-4 py-2 rounded-full font-bold transition-colors whitespace-nowrap"
+            >
+              <Users size={18} /> 客戶管理
+            </button>
+            <button
+              onClick={handleCreateProject}
+              className="flex flex-1 sm:flex-none items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-5 py-2 rounded-full font-bold transition-colors shadow-lg shadow-primary-500/20 whitespace-nowrap"
+            >
+              <PlusCircle size={18} /> 新增專案
+            </button>
+          </div>
         </div>
       </header>
 
@@ -479,7 +550,9 @@ const App: React.FC = () => {
               <Search size={48} className="opacity-30" />
             </div>
             <p className="text-xl font-bold text-slate-600">尚無專案資料</p>
-            <p className="text-sm mt-2">點擊右上角「新增專案」開始建立報價單</p>
+            <p className="text-sm mt-2">
+              {projectShelf === 'archived' ? '目前沒有已歸檔的報價單' : '點擊右上角「新增專案」開始建立報價單'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -488,6 +561,8 @@ const App: React.FC = () => {
                 key={project.id}
                 project={project}
                 onEdit={(id) => { setCurrentProjectId(id); setViewMode('editor'); }}
+                onArchive={handleArchiveProject}
+                onRestore={handleRestoreProject}
                 onDelete={handleDeleteProject}
                 onViewQuote={(id) => { setCurrentProjectId(id); setViewMode('preview_quote'); }}
                 onViewList={(id) => { setCurrentProjectId(id); setViewMode('preview_list'); }}
@@ -505,7 +580,7 @@ const App: React.FC = () => {
 
       {/* Footer Status */}
       <footer className="bg-white border-t border-slate-200 py-3 px-6 text-xs text-slate-400 flex justify-between no-print">
-        <span>專案總數: {projects.length}</span>
+        <span>專案總數: {projects.length}（進行中 {activeCount} / 已歸檔 {archivedCount}）</span>
         <span>系統狀態: 正常 (已儲存)</span>
       </footer>
 

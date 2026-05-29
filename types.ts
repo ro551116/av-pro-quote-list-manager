@@ -78,6 +78,7 @@ export interface Project {
   negotiatedPrice?: number; // 議價後金額（含稅）
   salesId?: string; // 業務人員 ID
   compactQuote?: boolean; // 報價單精簡模式：品項合併為類別，細項「如附件」
+  archivedAt?: number | null; // 歸檔時間；有值時預設從主列表隱藏
   updatedAt: number;
 }
 

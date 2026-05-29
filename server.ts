@@ -108,6 +108,44 @@ async function startServer() {
     }
   });
 
+  app.post('/api/projects/:id/archive', async (req, res) => {
+    try {
+      const row = await db.get('SELECT data FROM projects WHERE id = ?', [req.params.id]);
+      if (!row) {
+        return res.status(404).json({ error: 'project not found' });
+      }
+      const now = Date.now();
+      const project = { ...JSON.parse(row.data), archivedAt: now, updatedAt: now };
+      await db.run(
+        'INSERT OR REPLACE INTO projects (id, data, updatedAt) VALUES (?, ?, ?)',
+        [project.id, JSON.stringify(project), now]
+      );
+      res.json({ success: true, project });
+    } catch (error) {
+      console.error('Failed to archive project:', error);
+      res.status(500).json({ error: 'Failed to archive project' });
+    }
+  });
+
+  app.post('/api/projects/:id/restore', async (req, res) => {
+    try {
+      const row = await db.get('SELECT data FROM projects WHERE id = ?', [req.params.id]);
+      if (!row) {
+        return res.status(404).json({ error: 'project not found' });
+      }
+      const now = Date.now();
+      const project = { ...JSON.parse(row.data), archivedAt: null, updatedAt: now };
+      await db.run(
+        'INSERT OR REPLACE INTO projects (id, data, updatedAt) VALUES (?, ?, ?)',
+        [project.id, JSON.stringify(project), now]
+      );
+      res.json({ success: true, project });
+    } catch (error) {
+      console.error('Failed to restore project:', error);
+      res.status(500).json({ error: 'Failed to restore project' });
+    }
+  });
+
   app.get('/api/customers', async (req, res) => {
     try {
       const rows = await db.all('SELECT data FROM customers ORDER BY updatedAt DESC');
@@ -174,6 +212,7 @@ async function startServer() {
         periodCharges: [{ id: '1', label: '活動日', type: 'rate', value: 1.0 }],
         subcontracts: [],
         taxRate: 0.05,
+        archivedAt: null,
         updatedAt: now,
       };
       await db.run(
