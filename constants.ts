@@ -202,6 +202,14 @@ export const DEFAULT_DAY_LABELS: string[] = [
   '活動日', '進場日', '撤場日', '彩排日', '夜間進場費', '前一天進場費', '超時費用',
 ];
 
+export const DEFAULT_VALID_DAYS = 15;
+
+export const PAYMENT_METHOD_PRESETS: string[] = [
+  '活動前付清',
+  '訂金 50% / 尾款 50%',
+  '活動後 7 天內付清',
+];
+
 // Default items for a brand new project
 export const INITIAL_ITEMS: Omit<EquipmentItem, 'id'>[] = [
   { category: 'audio', name: '基本音響系統', quantity: 1, unit: '式', price: 15000, note: 'Speakers + Console + Mics', subItems: ['電源線', '訊號線', '麥克風立架'] },

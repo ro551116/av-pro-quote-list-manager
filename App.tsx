@@ -117,6 +117,9 @@ const App: React.FC = () => {
             period: p.period ?? 1,
             periodCharges: p.periodCharges || migratePeriodToCharges(p.period ?? 1),
             subcontracts: p.subcontracts || [],
+            validDays: Number.isFinite(Number(p.validDays)) && Number(p.validDays) > 0 ? Math.floor(Number(p.validDays)) : 15,
+            validUntil: typeof p.validUntil === 'string' ? p.validUntil : '',
+            paymentMethod: typeof p.paymentMethod === 'string' ? p.paymentMethod : '',
             archivedAt: typeof p.archivedAt === 'number' ? p.archivedAt : null,
             items: p.items.map(item => {
                 // Migrate old category IDs
@@ -194,6 +197,9 @@ const App: React.FC = () => {
       taxRate: sourceProject?.taxRate ?? 0.05,
       salesId: sourceProject?.salesId,
       compactQuote: sourceProject?.compactQuote,
+      validDays: sourceProject?.validDays ?? 15,
+      validUntil: sourceProject?.validUntil || '',
+      paymentMethod: sourceProject?.paymentMethod || '',
       archivedAt: null,
       updatedAt: Date.now()
     };

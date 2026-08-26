@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson, Customer } from '../types';
-import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS } from '../constants';
+import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS, DEFAULT_VALID_DAYS, PAYMENT_METHOD_PRESETS } from '../constants';
 import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency, formatDateRange } from '../utils/helpers';
 import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
 
@@ -494,6 +494,69 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
             </div>
 
 
+          </div>
+
+          <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-100">
+            <h4 className="text-sm font-bold text-slate-700 mb-4 border-b border-slate-200 pb-1">報價條件</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">有效天數</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={project.validDays ?? DEFAULT_VALID_DAYS}
+                  onChange={e => {
+                    if (!e.target.value) {
+                      handleInfoChange('validDays', DEFAULT_VALID_DAYS);
+                      return;
+                    }
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isFinite(n) && n > 0) {
+                      handleInfoChange('validDays', Math.floor(n));
+                    } else {
+                      handleInfoChange('validDays', project.validDays ?? DEFAULT_VALID_DAYS);
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-slate-500">沒填截止日時，報價單印「有效期限 N 天」。</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">有效截止日</label>
+                <input
+                  type="date"
+                  value={project.validUntil || ''}
+                  onChange={e => handleInfoChange('validUntil', e.target.value || '')}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-slate-500">有填則改印「有效期至 {'{日期}'}」，優先於天數。</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">付款方式</label>
+                <select
+                  value=""
+                  onChange={e => {
+                    if (e.target.value) handleInfoChange('paymentMethod', e.target.value);
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                >
+                  <option value="">套用常用付款方式</option>
+                  {PAYMENT_METHOD_PRESETS.map(method => (
+                    <option key={method} value={method}>{method}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={project.paymentMethod || ''}
+                  onChange={e => handleInfoChange('paymentMethod', e.target.value)}
+                  placeholder="例如：訂金 50% / 尾款活動前付清"
+                  className="mt-2 w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

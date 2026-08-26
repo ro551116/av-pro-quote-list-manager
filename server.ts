@@ -212,6 +212,9 @@ async function startServer() {
         periodCharges: [{ id: '1', label: '活動日', type: 'rate', value: 1.0 }],
         subcontracts: [],
         taxRate: 0.05,
+        validDays: 15,
+        validUntil: '',
+        paymentMethod: '',
         archivedAt: null,
         updatedAt: now,
       };

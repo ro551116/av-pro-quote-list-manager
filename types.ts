@@ -78,6 +78,9 @@ export interface Project {
   negotiatedPrice?: number; // 議價後金額（含稅）
   salesId?: string; // 業務人員 ID
   compactQuote?: boolean; // 報價單精簡模式：品項合併為類別，細項「如附件」
+  validDays?: number;     // 有效天數；缺省 / 非法時視為 15
+  validUntil?: string;    // 截止日 YYYY-MM-DD；有值則優先於 validDays
+  paymentMethod?: string; // 付款方式全文
   archivedAt?: number | null; // 歸檔時間；有值時預設從主列表隱藏
   updatedAt: number;
 }

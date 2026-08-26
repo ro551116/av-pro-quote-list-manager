@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Project, Category, Subcontract, SalesPerson } from '../types';
 import { CATEGORIES } from '../constants';
-import { formatCurrency, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatDateRange, formatPeriodChargeLabel } from '../utils/helpers';
+import { formatCurrency, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatDateRange, formatPeriodChargeLabel, formatQuoteTerms } from '../utils/helpers';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
 
 // Declare html2pdf for TypeScript
@@ -466,7 +466,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   </div>
                   <div className="flex-1 p-4 text-[13px] leading-7 flex items-center relative">
                     <div className="z-10 relative">
-                      請確認後簽名或蓋章回傳本公司，此報價單簽認即視同合約書，若有任何疑問請與承辦業務確認，本估價單有效期限 15 天，詳細品項請參閱附件。
+                      {formatQuoteTerms(project, { includeAttachment: true })}
                     </div>
                   </div>
                   <div className="w-[180px] md:w-[200px] border-l border-black relative overflow-hidden flex items-center justify-center p-2">
@@ -961,6 +961,9 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                                     </div>
                                 )}
                             </div>
+                        </div>
+                        <div className="text-[13px] leading-7 px-2 mb-4">
+                          {formatQuoteTerms(project, { includeAttachment: false })}
                         </div>
 
                     </>

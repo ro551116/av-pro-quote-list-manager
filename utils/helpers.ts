@@ -1,4 +1,5 @@
 import { EquipmentItem, PeriodCharge } from '../types';
+import { DEFAULT_VALID_DAYS } from '../constants';
 
 export const generateId = (): string => crypto.randomUUID();
 
@@ -13,6 +14,33 @@ export const formatDate = (dateString: string): string => {
     ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
     : new Date(dateString);
   return new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: 'long', day: 'numeric' }).format(date);
+};
+
+export const formatQuoteValidity = (project: {
+  validDays?: number;
+  validUntil?: string;
+}): string => {
+  const until = (project.validUntil || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+    return `本估價單有效期至 ${formatDate(until)}`;
+  }
+  const days = Number(project.validDays);
+  const n = Number.isFinite(days) && days > 0 ? Math.floor(days) : DEFAULT_VALID_DAYS;
+  return `本估價單有效期限 ${n} 天`;
+};
+
+export const formatQuoteTerms = (
+  project: { validDays?: number; validUntil?: string; paymentMethod?: string },
+  options?: { includeAttachment?: boolean },
+): string => {
+  const payment = (project.paymentMethod || '').trim();
+  const parts = [
+    '請確認後簽名或蓋章回傳本公司，此報價單簽認即視同合約書，若有任何疑問請與承辦業務確認',
+    formatQuoteValidity(project),
+  ];
+  if (payment) parts.push(`付款方式：${payment}`);
+  if (options?.includeAttachment) parts.push('詳細品項請參閱附件');
+  return `${parts.join('，')}。`;
 };
 
 export const formatDateRange = (startDate?: string, endDate?: string): string => {
