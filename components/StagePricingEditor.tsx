@@ -416,7 +416,9 @@ export const StagePricingEditor: React.FC<StagePricingEditorProps> = ({ project,
           <Plus size={14} /> 新增檔期
         </button>
       </div>
-      {rows.length === 0 && <p className="text-sm text-slate-600">尚無檔期，可直接新增。</p>}
+      {pricing.stages.length === 0 && (
+        <p className="text-sm text-slate-600">尚未新增檔期，需要時再按「新增檔期」。</p>
+      )}
       {rows.map((row, rowIdx) => {
         const stage = row.stage;
         const otherStages = pricing.stages.filter((s) => s.id !== stage?.id);

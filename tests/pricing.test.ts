@@ -22,6 +22,25 @@ const stage = (): WorkStage => ({
   id: 'setup', name: '進場', pricingMode: 'fixed', fixedAmount: 30000,
   displayMode: 'summary', items: [labor('crew')],
 });
+const emptyStage = (id: string): WorkStage => ({
+  id, name: id, pricingMode: 'itemized', fixedAmount: 0, displayMode: 'summary', items: [],
+});
+
+test('empty schedules omit placeholder fees without hiding free customer equipment', () => {
+  const quote = project();
+  quote.items = [];
+  quote.pricing = createStagePricing();
+  assert.deepEqual(getScheduleRows(quote), []);
+
+  quote.items.push({ ...equipment('internal', 1000, 500), internalOnly: true });
+  assert.deepEqual(getScheduleRows(quote), []);
+  assert.equal(calculateProject(quote).costSubtotal, 500);
+
+  quote.items.push(equipment('complimentary', 0));
+  const rows = getScheduleRows(quote);
+  assert.deepEqual(rows.map(row => [row.wholeEquipment, row.total]), [[true, 0]]);
+  assert.equal(calculateProject(quote).subtotal, 0);
+});
 
 test('selected rental periods exclude people, hidden equipment and duplicate selections', () => {
   const quote = project();
@@ -100,7 +119,9 @@ test('explicit historical conversion preserves all quote and cost totals without
     assert.equal(assigned.length, 1);
     assert.equal(assigned[0].quantity * assigned[0].costPrice!, 10000);
     if (previous.subtotal >= 16000) {
-      const [unallocated, setup] = converted.pricing!.stages;
+      const [unallocated] = converted.pricing!.stages;
+      const setup = emptyStage('manual-setup');
+      converted.pricing!.stages.push(setup);
       setup.items.push(...unallocated.items);
       unallocated.items = [];
       assert.equal(calculateProject(converted).subtotal, previous.subtotal, 'assigning converted staff must not leave a duplicate package fee');
@@ -134,6 +155,7 @@ test('schedule row totals match calculateProject across modes with orphan visibi
     { ...equipment('cable', 50, 10), quantity: 3 },
   ];
   quote.pricing = createStagePricing();
+  quote.pricing.stages = [emptyStage('setup'), emptyStage('event')];
   const eventStageId = quote.pricing.stages[1].id;
 
   // 1. Itemized mode with valid stage link
@@ -223,6 +245,7 @@ test('schedule row totals match calculateProject across modes with orphan visibi
 test('linking, reassignment and updating orphan fees preserve quote and cost totals with stable resource IDs', () => {
   const quote = project();
   quote.pricing = createStagePricing();
+  quote.pricing.stages = [emptyStage('setup')];
   quote.pricing.stages[0].items.push(labor('stage-labor'));
   quote.pricing.rental = {
     mode: 'periods',
@@ -299,6 +322,7 @@ test('linking, reassignment and updating orphan fees preserve quote and cost tot
 test('cloneStagePricing remaps whole and period owner stage IDs via independent stage map', () => {
   const quote = project();
   quote.pricing = createStagePricing();
+  quote.pricing.stages = [emptyStage('setup'), emptyStage('event')];
   const [s0, s1] = quote.pricing.stages;
   s0.id = 'audio'; // Stage and equipment identifiers can occupy different namespaces.
   quote.pricing.rental = {
@@ -336,6 +360,7 @@ test('cloneStagePricing remaps whole and period owner stage IDs via independent 
 test('explicit deletion removes associated charges and work lines without destroying equipment cost or dormant links', () => {
   const quote = project();
   quote.pricing = createStagePricing();
+  quote.pricing.stages = [emptyStage('setup'), emptyStage('event')];
   const [setup, event] = quote.pricing.stages;
   setup.items.push(labor('crew-1'));
   quote.subcontracts = [

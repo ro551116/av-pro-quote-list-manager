@@ -3,12 +3,19 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Project } from '../types';
-import { calculateProject, createStagePricing } from '../utils/helpers';
+import { calculateProject } from '../utils/helpers';
 import { StagePricingCompactTable, StagePricingQuoteEquipmentTable, StagePricingQuoteScheduleTable } from '../components/StagePricingPrint';
 
 const quote = (): Project => ({
   id: 'print', name: 'quote', client: '', date: '', location: '', contact: '',
-  taxRate: 0.05, updatedAt: 0, items: [], pricing: createStagePricing(),
+  taxRate: 0.05, updatedAt: 0, items: [],
+  pricing: {
+    version: 1,
+    rental: { mode: 'itemized', fixedAmount: 0, periods: [], stageId: 'event' },
+    stages: ['setup', 'event'].map(id => ({
+      id, name: id, pricingMode: 'itemized', fixedAmount: 0, displayMode: 'summary', items: [],
+    })),
+  },
 });
 
 test('a rental package without reference equipment still appears on the payable quote', () => {

@@ -162,24 +162,14 @@ export const calculateProject = (project: Project) => {
 };
 
 export const createStagePricing = (): StagePricing => {
-  const stages: WorkStage[] = ['進場', '活動', '撤場'].map(name => ({
-    id: generateId(),
-    name,
-    pricingMode: 'itemized',
-    fixedAmount: 0,
-    displayMode: 'summary',
-    items: [],
-  }));
-  const eventStage = stages.find(s => s.name === '活動') || stages[0];
   return {
     version: 1,
     rental: {
       mode: 'itemized',
       fixedAmount: 0,
       periods: [],
-      stageId: eventStage?.id,
     },
-    stages,
+    stages: [],
   };
 };
 
@@ -197,7 +187,6 @@ export const convertToStagePricing = (project: Project): Project => {
     startDate: project.date,
     endDate: project.eventEndDate || project.date,
     periods: [],
-    stageId: pricing.rental.stageId,
   };
   if (crew.length) {
     pricing.stages.unshift({
@@ -368,11 +357,13 @@ export const getScheduleRows = (project: Project): ScheduleRow[] => {
     }
   } else {
     let wholeFee = 0;
+    let hasEquipment = false;
     if (rental.mode === 'fixed') {
       wholeFee = rental.fixedAmount;
     } else {
       for (const item of project.items) {
         if (!item.internalOnly && item.category !== 'crew') {
+          hasEquipment = true;
           wholeFee += calcClientTotal(item);
         }
       }
@@ -399,8 +390,8 @@ export const getScheduleRows = (project: Project): ScheduleRow[] => {
     }
 
     if (!linkedStageId) {
-      const isZeroFixed = rental.mode === 'fixed' && rental.fixedAmount === 0;
-      if (!isZeroFixed) {
+      const isEmptyFee = rental.mode === 'fixed' ? wholeFee === 0 : !hasEquipment;
+      if (!isEmptyFee) {
         rows.push({
           key: 'whole-equipment',
           name: '器材費用',
