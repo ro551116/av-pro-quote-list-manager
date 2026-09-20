@@ -10,111 +10,50 @@ import {
   calcWorkStage,
   calcRentalPeriod,
   formatDateRange,
+  getScheduleRows,
 } from '../utils/helpers';
 
-interface QuoteEquipmentProps {
+interface QuoteTableProps {
   project: Project;
-  rentalSubtotal: number;
   nextIndex: () => number;
 }
 
-/**
- * Customer Quote Equipment Section (New Stage Pricing)
- * Renders reference equipment specification list with NO double billing.
- * - 'itemized': standard billable equipment rows summing to rentalSubtotal.
- * - 'fixed': equipment list marked as specification reference + explicit fixed rental billing row.
- * - 'periods': equipment list marked as reference + actual period charges billed once (percentages hidden).
- */
-export const StagePricingQuoteEquipmentTable: React.FC<QuoteEquipmentProps> = ({
-  project,
-  rentalSubtotal,
-  nextIndex,
-}) => {
+// Specifications are reference-only; all payable charges appear under their period.
+export const StagePricingQuoteEquipmentTable: React.FC<QuoteTableProps> = ({ project, nextIndex }) => {
   if (!project.pricing) return null;
-  const { rental } = project.pricing;
-  const equipmentItems = project.items.filter(
-    item => !item.internalOnly && item.category !== 'crew'
-  );
-
-  if (equipmentItems.length === 0 && rentalSubtotal === 0) return null;
-
-  const isFixed = rental.mode === 'fixed';
-  const isPeriods = rental.mode === 'periods';
-  const isItemized = rental.mode === 'itemized';
-
+  const items = project.items.filter(item => !item.internalOnly && item.category !== 'crew');
+  if (!items.length) return null;
   return (
-    <div className="w-full mb-4">
-      {/* Notice banner for fixed or periods mode */}
-      {isFixed && (
-        <div className="bg-slate-50 border border-black px-3 py-1.5 mb-2 text-xs text-slate-700 flex justify-between items-center print:bg-slate-50 print:print-color-adjust-exact">
-          <span className="font-bold">器材租賃清單（整檔固定租金計費）</span>
-          <span className="text-slate-500">下方各器材品項單價與金額為規格參考，本案以整檔固定租金計價</span>
-        </div>
-      )}
-      {isPeriods && (
-        <div className="bg-slate-50 border border-black px-3 py-1.5 mb-2 text-xs text-slate-700 flex justify-between items-center print:bg-slate-50 print:print-color-adjust-exact">
-          <span className="font-bold">器材清單（依檔期計費）</span>
-          <span className="text-slate-500">下方器材品項金額為基準參考，實際租賃費用依下方租賃檔期計價</span>
-        </div>
-      )}
-
-      {/* Equipment Category Tables */}
-      {CATEGORIES.map(cat => {
-        const catItems = equipmentItems.filter(i => i.category === cat.id);
-        if (catItems.length === 0) return null;
-
+    <div className="mb-4">
+      <div className="mb-1 text-xs text-slate-600">器材明細（規格與價格參考，實際費用統一列於下方檔期）</div>
+      {CATEGORIES.map(category => {
+        const categoryItems = items.filter(item => item.category === category.id);
+        if (!categoryItems.length) return null;
         return (
-          <div key={cat.id} className="mb-3">
-            <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact flex justify-between items-center">
-              <span>{cat.label}</span>
-              {(isFixed || isPeriods) && (
-                <span className="text-xs font-normal text-slate-500">規格參考</span>
-              )}
-            </div>
-
-            <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-              <thead className="bg-white text-center">
+          <div key={category.id} className="mb-2">
+            <div className="border border-b-0 border-black bg-gray-100 px-2 py-1 text-sm font-bold print:print-color-adjust-exact">{category.label}</div>
+            <table className="w-full table-fixed border-collapse border border-black text-[13px]">
+              <thead>
                 <tr>
-                  <th className="border border-black py-1 w-[5%] font-medium">編號</th>
-                  <th className="border border-black py-1 w-[28%] font-medium">品名</th>
-                  <th className="border border-black py-1 w-[8%] font-medium">數量</th>
-                  <th className="border border-black py-1 w-[8%] font-medium">單位</th>
-                  <th className="border border-black py-1 w-[13%] font-medium">
-                    {isFixed || isPeriods ? '單價 (參考)' : '單價'}
-                  </th>
-                  <th className="border border-black py-1 w-[15%] font-medium">
-                    {isFixed ? '金額 (參考)' : isPeriods ? '基準金額' : '金額'}
-                  </th>
-                  <th className="border border-black py-1 w-[23%] font-medium">備註</th>
+                  <th className="border border-black py-1 w-[6%] font-medium">編號</th>
+                  <th className="border border-black py-1 px-2 w-[30%] text-left font-medium">品名</th>
+                  <th className="border border-black py-1 w-[12%] font-medium">數量</th>
+                  <th className="border border-black py-1 px-2 w-[15%] text-right font-medium">參考單價</th>
+                  <th className="border border-black py-1 px-2 w-[15%] text-right font-medium">參考金額</th>
+                  <th className="border border-black py-1 px-2 w-[22%] text-left font-medium">備註</th>
                 </tr>
               </thead>
               <tbody>
-                {catItems.map(item => (
+                {categoryItems.map(item => (
                   <tr key={item.id} className="break-inside-avoid">
-                    <td className="border border-black py-2 text-center align-top font-mono">
-                      {nextIndex()}
+                    <td className="border border-black py-1.5 text-center">{nextIndex()}</td>
+                    <td className="border border-black px-2 py-1.5 font-bold">
+                      {item.name}{!!item.subItems?.length && <div className="text-xs font-normal text-slate-600">如附件</div>}
                     </td>
-                    <td className="border border-black py-2 px-2 align-top font-bold">
-                      {item.name}
-                      {item.subItems && item.subItems.length > 0 && (
-                        <div className="text-gray-500 text-xs mt-1 font-normal">如附件</div>
-                      )}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-center align-top">
-                      {item.quantity}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-center align-top">
-                      {item.unit}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right align-top font-mono text-slate-700">
-                      {formatCurrency(item.price)}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">
-                      {formatCurrency(calcClientTotal(item))}
-                    </td>
-                    <td className="border border-black py-2 px-2 align-top text-xs">
-                      {item.note}
-                    </td>
+                    <td className="border border-black px-2 py-1.5 text-center">{item.quantity} {item.unit}</td>
+                    <td className="border border-black px-2 py-1.5 text-right font-mono text-slate-600">{formatCurrency(item.price)}</td>
+                    <td className="border border-black px-2 py-1.5 text-right font-mono text-slate-600">{formatCurrency(calcClientTotal(item))}</td>
+                    <td className="border border-black px-2 py-1.5 text-xs">{item.note}</td>
                   </tr>
                 ))}
               </tbody>
@@ -122,398 +61,130 @@ export const StagePricingQuoteEquipmentTable: React.FC<QuoteEquipmentProps> = ({
           </div>
         );
       })}
-
-      {/* Billable rental charge row when fixed */}
-      {isFixed && (
-        <div className="border-2 border-black bg-gray-50 p-2.5 mb-4 flex justify-between items-center print:bg-gray-50 print:print-color-adjust-exact">
-          <div>
-            <span className="font-bold text-sm">器材租賃費用（整檔固定約定）</span>
-            <span className="text-xs text-gray-500 ml-2">※ 上列品項單價與金額為規格參考，本案以整檔固定租金計價</span>
-          </div>
-          <div className="text-right font-mono font-bold text-base">
-            {formatCurrency(rental.fixedAmount)}
-          </div>
-        </div>
-      )}
-
-      {/* Billable rental charges table when periods */}
-      {isPeriods && rental.periods.length > 0 && (
-        <div className="mb-4">
-          <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact flex justify-between items-center">
-            <span>器材租賃計費項目</span>
-            <span className="text-xs font-normal text-gray-600">依約定檔期收費</span>
-          </div>
-          <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-            <thead className="bg-white text-center">
-              <tr>
-                <th className="border border-black py-1 w-[8%] font-medium">編號</th>
-                <th className="border border-black py-1 w-[47%] font-medium text-left px-2">租賃檔期項目</th>
-                <th className="border border-black py-1 w-[15%] font-medium">天數 / 次數</th>
-                <th className="border border-black py-1 w-[30%] font-medium text-right px-2">租金金額</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rental.periods.map((period, idx) => {
-                const periodAmt = calcRentalPeriod(project.items, period);
-                const dateRange = formatDateRange(period.startDate, period.endDate);
-                return (
-                  <tr key={period.id || idx} className="break-inside-avoid">
-                    <td className="border border-black py-2 text-center font-mono">
-                      {nextIndex()}
-                    </td>
-                    <td className="border border-black py-2 px-2 font-bold">
-                      {period.label}
-                      {dateRange && (
-                        <span className="text-xs font-normal text-gray-600 ml-1">({dateRange})</span>
-                      )}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-center font-mono">
-                      {period.units} {period.units > 0 ? '天/次' : ''}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right font-mono font-bold">
-                      {formatCurrency(periodAmt)}
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr className="bg-gray-50 border-t-2 border-black font-bold print:bg-gray-50 print:print-color-adjust-exact">
-                <td colSpan={3} className="border border-black py-2 px-2 text-right">
-                  器材租賃小計（未稅）
-                </td>
-                <td className="border border-black py-2 px-2 text-right font-mono text-sm">
-                  {formatCurrency(rentalSubtotal)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Subtotal note for itemized rental */}
-      {isItemized && (
-        <div className="flex justify-end mb-4">
-          <div className="border border-black bg-gray-50 px-3 py-1 text-xs font-bold print:bg-gray-50 print:print-color-adjust-exact">
-            器材租賃小計（未稅）: <span className="font-mono text-sm ml-1">{formatCurrency(rentalSubtotal)}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-interface QuoteStagesProps {
-  project: Project;
-  nextIndex: () => number;
-}
+const getQuoteScheduleRows = (project: Project) => {
+  const hasEquipment = project.items.some(item => !item.internalOnly && item.category !== 'crew');
+  return getScheduleRows(project).filter(row =>
+    row.periods.length > 0 || (row.wholeEquipment && (hasEquipment || row.equipmentSubtotal !== 0))
+    || row.workSubtotal !== 0 || row.stage?.items.some(item => !item.internalOnly) || row.stage?.note?.trim()
+  );
+};
 
-/**
- * Customer Quote Stages Section (New Stage Pricing)
- * Renders each stage according to displayMode and pricingMode.
- * - summary: single row with stage name, schedule, note, and agreed/subtotal amount.
- * - detailed + fixed: line details shown as reference specifications, stage agreed fixed price billed.
- * - detailed + itemized: line details billed directly, summing to stage subtotal.
- * - Empty no-staff stages with 0 fixed amount and no note are omitted.
- * - internalOnly items hidden. Summary stages with 0 charge do not invent fees.
- */
-export const StagePricingQuoteStagesTable: React.FC<QuoteStagesProps> = ({
-  project,
-  nextIndex,
-}) => {
+const QuoteLine: React.FC<{
+  index: number;
+  name: string;
+  quantity: string;
+  price?: number;
+  amount?: number;
+  note?: string;
+}> = ({ index, name, quantity, price, amount, note }) => (
+  <tr className="break-inside-avoid">
+    <td className="border border-black py-1.5 text-center align-top">{index}</td>
+    <td className="border border-black px-2 py-1.5 align-top">
+      {name}{note && <div className="text-xs text-slate-600">{note}</div>}
+    </td>
+    <td className="border border-black px-2 py-1.5 text-center align-top">{quantity}</td>
+    <td className="border border-black px-2 py-1.5 text-right align-top font-mono">{price === undefined ? '—' : formatCurrency(price)}</td>
+    <td className="border border-black px-2 py-1.5 text-right align-top font-mono">{amount === undefined ? '—' : formatCurrency(amount)}</td>
+  </tr>
+);
+
+export const StagePricingQuoteScheduleTable: React.FC<QuoteTableProps> = ({ project, nextIndex }) => {
   if (!project.pricing) return null;
-  const { stages } = project.pricing;
-
+  const rows = getQuoteScheduleRows(project);
+  if (!rows.length) return null;
   return (
-    <div className="w-full mb-2">
-      {stages.map(stage => {
-        const visibleItems = stage.items.filter(item => !item.internalOnly);
-        const stageTotals = calcWorkStage(stage);
-        const isEmpty = stage.items.length === 0;
-        const hasNonzeroFixed = stage.pricingMode === 'fixed' && stage.fixedAmount !== 0;
-        const hasMeaningfulNote = Boolean(stage.note && stage.note.trim().length > 0);
-
-        // Empty no-staff stage without fee or note is omitted from financial quote
-        if (isEmpty && !hasNonzeroFixed && !hasMeaningfulNote) {
-          return null;
-        }
-        // If all items are internalOnly and stage price is 0, do not invent a charged row
-        if (visibleItems.length === 0 && !hasNonzeroFixed && !hasMeaningfulNote) {
-          return null;
-        }
-
-        const stageSchedule = [
-          formatDateRange(stage.startDate, stage.endDate),
-          stage.time,
-        ]
-          .filter(Boolean)
-          .join(' ');
-
-        // Summary displayMode
-        if (stage.displayMode === 'summary') {
-          return (
-            <div key={stage.id} className="mb-4">
-              <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span>【{stage.name}】階段</span>
-                  {stageSchedule && (
-                    <span className="text-xs font-normal text-slate-600">（{stageSchedule}）</span>
-                  )}
-                </div>
-                {stage.note && (
-                  <span className="text-xs font-normal text-slate-500">{stage.note}</span>
-                )}
-              </div>
-
-              <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-                <thead className="bg-white text-center">
-                  <tr>
-                    <th className="border border-black py-1 w-[8%] font-medium">編號</th>
-                    <th className="border border-black py-1 w-[40%] font-medium text-left px-2">工程與服務項目</th>
-                    <th className="border border-black py-1 w-[8%] font-medium">數量</th>
-                    <th className="border border-black py-1 w-[8%] font-medium">單位</th>
-                    <th className="border border-black py-1 w-[16%] font-medium text-right px-2">單價</th>
-                    <th className="border border-black py-1 w-[20%] font-medium text-right px-2">金額</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="break-inside-avoid">
-                    <td className="border border-black py-2 text-center font-mono">
-                      {nextIndex()}
-                    </td>
-                    <td className="border border-black py-2 px-2 font-bold">
-                      {stage.name} 階段工程與執行費用
-                      {stage.note && (
-                        <div className="text-xs text-gray-500 font-normal mt-0.5">{stage.note}</div>
-                      )}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-center">1</td>
-                    <td className="border border-black py-2 px-2 text-center">式</td>
-                    <td className="border border-black py-2 px-2 text-right font-mono">
-                      {formatCurrency(stageTotals.subtotal)}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right font-mono font-bold">
-                      {formatCurrency(stageTotals.subtotal)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          );
-        }
-
-        // Detailed displayMode
-        const isFixedStage = stage.pricingMode === 'fixed';
-
+    <table className="w-full table-fixed border-collapse border border-black text-[13px] mb-3">
+      <caption className="pb-1 text-left text-sm font-bold">檔期與項目</caption>
+      <thead>
+        <tr>
+          <th className="border border-black py-1 w-[6%] font-medium">編號</th>
+          <th className="border border-black py-1 px-2 w-[42%] text-left font-medium">項目</th>
+          <th className="border border-black py-1 w-[18%] font-medium">數量／工期</th>
+          <th className="border border-black py-1 px-2 w-[16%] text-right font-medium">單價</th>
+          <th className="border border-black py-1 px-2 w-[18%] text-right font-medium">金額</th>
+        </tr>
+      </thead>
+      {rows.map(row => {
+        const stage = row.stage;
+        const visibleItems = stage?.items.filter(item => !item.internalOnly) || [];
+        const schedule = [formatDateRange(row.startDate, row.endDate), stage?.time].filter(Boolean).join(' ');
+        const fixed = stage?.pricingMode === 'fixed';
+        const summary = stage?.displayMode === 'summary';
         return (
-          <div key={stage.id} className="mb-4">
-            <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span>【{stage.name}】階段工項明細</span>
-                {stageSchedule && (
-                  <span className="text-xs font-normal text-slate-600">（{stageSchedule}）</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {isFixedStage && (
-                  <span className="text-xs font-normal text-slate-500">※ 固定總價計費</span>
-                )}
-                {stage.note && (
-                  <span className="text-xs font-normal text-slate-500">{stage.note}</span>
-                )}
-              </div>
-            </div>
-
-            <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-              <thead className="bg-white text-center">
-                <tr>
-                  <th className="border border-black py-1 w-[5%] font-medium">編號</th>
-                  <th className="border border-black py-1 w-[28%] font-medium text-left px-2">工項 / 內容</th>
-                  <th className="border border-black py-1 w-[8%] font-medium">數量</th>
-                  <th className="border border-black py-1 w-[8%] font-medium">單位</th>
-                  <th className="border border-black py-1 w-[10%] font-medium">工期/天數</th>
-                  <th className="border border-black py-1 w-[12%] font-medium text-right px-2">
-                    {isFixedStage ? '單價 (參考)' : '單價'}
-                  </th>
-                  <th className="border border-black py-1 w-[13%] font-medium text-right px-2">
-                    {isFixedStage ? '金額 (參考)' : '金額'}
-                  </th>
-                  <th className="border border-black py-1 w-[16%] font-medium text-left px-2">備註</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.length === 0 ? (
-                  <tr className="break-inside-avoid">
-                    <td colSpan={8} className="border border-black py-2 px-2 text-center text-slate-500 text-xs">
-                      {isFixedStage ? '本階段無個別細項，依約定總價計費' : '本階段無人力或其他加計費用'}
-                    </td>
-                  </tr>
-                ) : (
-                  visibleItems.map(item => (
-                    <tr key={item.id} className="break-inside-avoid">
-                      <td className="border border-black py-2 text-center align-top font-mono">
-                        {nextIndex()}
-                      </td>
-                      <td className="border border-black py-2 px-2 align-top font-bold">
-                        {item.name}
-                        {item.subItems && item.subItems.length > 0 && (
-                          <div className="text-gray-500 text-xs mt-1 font-normal">如附件</div>
-                        )}
-                      </td>
-                      <td className="border border-black py-2 px-2 text-center align-top">
-                        {item.quantity}
-                      </td>
-                      <td className="border border-black py-2 px-2 text-center align-top">
-                        {item.unit}
-                      </td>
-                      <td className="border border-black py-2 px-2 text-center align-top font-mono">
-                        {item.duration} {item.durationUnit}
-                      </td>
-                      <td className="border border-black py-2 px-2 text-right align-top font-mono text-slate-700">
-                        {formatCurrency(item.price)}
-                      </td>
-                      <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">
-                        {formatCurrency(calcStageItemTotal(item))}
-                      </td>
-                      <td className="border border-black py-2 px-2 align-top text-xs">
-                        {item.note}
-                      </td>
-                    </tr>
-                  ))
-                )}
-
-                {/* Subtotal / Agreed Row */}
-                {isFixedStage ? (
-                  <tr className="bg-gray-50 border-t-2 border-black font-bold print:bg-gray-50 print:print-color-adjust-exact">
-                    <td colSpan={6} className="border border-black py-2 px-3 text-right">
-                      【{stage.name}】階段約定總價（未稅）
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right font-mono text-sm">
-                      {formatCurrency(stage.fixedAmount)}
-                    </td>
-                    <td className="border border-black py-2 px-2 text-xs font-normal text-slate-500">
-                      ※ 本階段以約定總價計費
-                    </td>
-                  </tr>
-                ) : (
-                  <tr className="bg-gray-50 border-t-2 border-black font-bold print:bg-gray-50 print:print-color-adjust-exact">
-                    <td colSpan={6} className="border border-black py-2 px-3 text-right">
-                      【{stage.name}】階段小計（未稅）
-                    </td>
-                    <td className="border border-black py-2 px-2 text-right font-mono text-sm">
-                      {formatCurrency(stageTotals.subtotal)}
-                    </td>
-                    <td className="border border-black py-2 px-2"></td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <tbody key={row.key}>
+            <tr className="bg-gray-100 break-after-avoid print:print-color-adjust-exact">
+              <th colSpan={5} className="border border-black px-2 py-1.5 text-left">
+                {row.name}
+                {schedule && <span className="ml-2 text-xs font-normal text-slate-600">{schedule}</span>}
+                {stage?.note && <div className="text-xs font-normal text-slate-600">{stage.note}</div>}
+              </th>
+            </tr>
+            {row.wholeEquipment && (
+              <QuoteLine index={nextIndex()} name="器材費用" quantity="1 式"
+                price={row.equipmentSubtotal} amount={row.equipmentSubtotal} />
+            )}
+            {row.periods.map(period => (
+              <QuoteLine key={period.id} index={nextIndex()} name={period.label || '器材費用'}
+                quantity={`${period.units} 次`}
+                price={period.type === 'fixed' ? period.value : undefined}
+                amount={calcRentalPeriod(project.items, period)}
+                note={formatDateRange(period.startDate, period.endDate)} />
+            ))}
+            {!summary && visibleItems.map(item => (
+              <QuoteLine key={item.id} index={nextIndex()} name={item.name}
+                quantity={`${item.quantity} ${item.unit}${item.duration !== 1 ? ` × ${item.duration} ${item.durationUnit}` : ''}`}
+                price={fixed ? undefined : item.price}
+                amount={fixed ? undefined : calcStageItemTotal(item)}
+                note={[item.note, item.subItems?.length ? '如附件' : '', fixed ? '含於工作項目包價' : ''].filter(Boolean).join(' · ')} />
+            ))}
+            {(summary || fixed) && (visibleItems.length > 0 || row.workSubtotal !== 0) && (
+              <QuoteLine index={nextIndex()} name={fixed ? '工作項目包價' : '工作項目'}
+                quantity="1 式" price={row.workSubtotal} amount={row.workSubtotal} />
+            )}
+            <tr className="break-inside-avoid font-bold">
+              <td colSpan={4} className="border border-black px-2 py-1.5 text-right">檔期小計（未稅）</td>
+              <td className="border border-black px-2 py-1.5 text-right font-mono">{formatCurrency(row.total)}</td>
+            </tr>
+          </tbody>
         );
       })}
-    </div>
+    </table>
   );
 };
 
-interface CompactProps {
-  project: Project;
-  rentalSubtotal: number;
-}
-
-/**
- * Compact Quote Mode Summary Table (Cover Page)
- * Shows actual rental subtotal and stage subtotal lines ONCE.
- */
-export const StagePricingCompactTable: React.FC<CompactProps> = ({
-  project,
-  rentalSubtotal,
-}) => {
+export const StagePricingCompactTable: React.FC<{ project: Project }> = ({ project }) => {
   if (!project.pricing) return null;
-  const { rental, stages } = project.pricing;
-
-  const rows: {
-    title: string;
-    content: string;
-    amount: number;
-    note: string;
-  }[] = [];
-
-  // Rental Line (billed once)
-  if (rentalSubtotal !== 0 || project.items.some(item => !item.internalOnly && item.category !== 'crew')) {
-    const rentalNote =
-      rental.mode === 'fixed'
-        ? '整檔固定租金'
-        : rental.mode === 'periods'
-        ? '檔期租金合計'
-        : '品項租賃合計';
-
-    rows.push({
-      title: '器材租賃費用',
-      content: '如附件',
-      amount: rentalSubtotal,
-      note: rentalNote,
-    });
-  }
-
-  // Stage Lines (each stage billed once)
-  for (const stage of stages) {
-    const totals = calcWorkStage(stage);
-    const hasVisible = stage.items.some(i => !i.internalOnly);
-    const isFixedNonzero = stage.pricingMode === 'fixed' && stage.fixedAmount !== 0;
-    const hasNote = Boolean(stage.note && stage.note.trim().length > 0);
-
-    // Skip empty no-charge stages
-    if (!hasVisible && !isFixedNonzero && !hasNote) continue;
-
-    const schedule = [
-      formatDateRange(stage.startDate, stage.endDate),
-      stage.time,
-      stage.note,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-
-    rows.push({
-      title: `${stage.name} 階段費用`,
-      content: '如附件',
-      amount: totals.subtotal,
-      note: schedule,
-    });
-  }
-
+  const rows = getQuoteScheduleRows(project);
   return (
-    <div className="w-full mb-2">
-      <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-        <thead className="bg-white text-center">
-          <tr>
-            <th className="border border-black py-1 w-[8%] font-medium">編號</th>
-            <th className="border border-black py-1 w-[30%] font-medium">品項</th>
-            <th className="border border-black py-1 w-[14%] font-medium">內容</th>
-            <th className="border border-black py-1 w-[20%] font-medium">價格</th>
-            <th className="border border-black py-1 w-[28%] font-medium">備註</th>
+    <table className="w-full table-fixed border-collapse border border-black text-[13px] mb-2">
+      <thead>
+        <tr>
+          <th className="border border-black py-1 w-[8%] font-medium">編號</th>
+          <th className="border border-black py-1 px-2 w-[28%] text-left font-medium">檔期</th>
+          <th className="border border-black py-1 px-2 w-[42%] text-left font-medium">內容</th>
+          <th className="border border-black py-1 px-2 w-[22%] text-right font-medium">金額</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={row.key} className="break-inside-avoid">
+            <td className="border border-black py-2 text-center">{index + 1}</td>
+            <td className="border border-black px-2 py-2 font-bold">{row.name}</td>
+            <td className="border border-black px-2 py-2">
+              如附件
+              <div className="text-xs text-slate-600">
+                {[formatDateRange(row.startDate, row.endDate), row.stage?.time, row.stage?.note].filter(Boolean).join(' · ')}
+              </div>
+            </td>
+            <td className="border border-black px-2 py-2 text-right font-mono font-bold">{formatCurrency(row.total)}</td>
           </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr key={idx} className="break-inside-avoid">
-              <td className="border border-black py-2 text-center align-middle font-mono">
-                {idx + 1}
-              </td>
-              <td className="border border-black py-2 px-2 align-middle font-bold">
-                {row.title}
-              </td>
-              <td className="border border-black py-2 px-2 text-center align-middle text-gray-600">
-                {row.content}
-              </td>
-              <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
-                {formatCurrency(row.amount)}
-              </td>
-              <td className="border border-black py-2 px-2 align-middle text-xs text-slate-600">
-                {row.note}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </table>
   );
 };
 
@@ -573,9 +244,9 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
       {/* 1. Equipment Rental Section */}
       <div className="mb-6">
         <div className="font-bold border-t-2 border-black border-l border-r bg-slate-800 text-white px-2 py-1 text-sm print:bg-slate-800 print:text-white print:print-color-adjust-exact flex justify-between items-center">
-          <span>器材租賃成本明細</span>
+          <span>器材成本明細</span>
           <span className="text-xs font-normal text-slate-200">
-            計費模式：{isFixedRental ? '整檔固定金額' : isPeriodsRental ? '檔期租賃計費' : '器材明細加總'}
+            計費模式：{isFixedRental ? '整檔固定金額' : isPeriodsRental ? '依檔期計費' : '器材明細加總'}
           </span>
         </div>
 
@@ -680,7 +351,7 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
           <tfoot>
             <tr className="bg-slate-50 border-t-2 border-black font-bold print:bg-slate-50 print:print-color-adjust-exact text-[13px]">
               <td colSpan={3} className="border border-black py-2 px-3 text-right">
-                器材租賃收入合計（未稅）
+                器材收入合計（未稅）
               </td>
               <td
                 colSpan={isItemizedRental ? 3 : 2}
@@ -863,7 +534,7 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
         <table className="w-full text-[13px] border-collapse border-2 border-black">
           <tbody>
             <tr className="border border-black bg-slate-50 print:bg-slate-50 print:print-color-adjust-exact">
-              <td className="py-2 px-3 font-bold w-[50%]">器材租賃收入（未稅）</td>
+              <td className="py-2 px-3 font-bold w-[50%]">器材收入（未稅）</td>
               <td className="py-2 px-3 text-right font-mono font-bold">{formatCurrency(rentalSubtotal)}</td>
             </tr>
             <tr className="border border-black">

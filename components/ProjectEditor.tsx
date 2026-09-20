@@ -91,6 +91,10 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
   // Input state for adding custom sub-items
   const [customSubItemInput, setCustomSubItemInput] = useState<string>('');
   const [activeInputId, setActiveInputId] = useState<string | null>(null);
+  // Local UI toggles for simplified quote flow
+  const [showEquipmentCost, setShowEquipmentCost] = useState(false);
+  const [showCostProfit, setShowCostProfit] = useState(false);
+  const [showSubcontractSection, setShowSubcontractSection] = useState(false);
 
   const handleInfoChange = <K extends keyof Project>(field: K, value: Project[K]) => {
     setProject(prev => ({ ...prev, [field]: value }));
@@ -672,15 +676,15 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
         {/* Conversion Confirmation Modal */}
         {showConvertModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-            <div role="dialog" aria-modal="true" aria-label="確認轉換為階段計價" className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div role="dialog" aria-modal="true" aria-label="確認使用整合檔期設定" className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
               <div className="flex items-start justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
                     <Sparkles size={22} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">確認轉換為階段計價架構</h3>
-                    <p className="text-xs text-slate-500">支援進場/活動/撤場獨立人力車載，租賃與工作階段清晰切分</p>
+                    <h3 className="text-lg font-bold text-slate-900">確認使用整合檔期設定</h3>
+                    <p className="text-xs text-slate-500">在同一檔期設定日期、器材費用、人力與車載</p>
                   </div>
                 </div>
                 <button
@@ -734,7 +738,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                       <div className="font-bold text-slate-800 mb-1">分配說明：</div>
                       <ul className="space-y-1.5 list-disc list-inside">
                         <li>
-                          <strong>器材租賃折算：</strong> 原檔期費用折算為固定包套租金餘額，全場器材租賃僅計費一次，絕無重複累加。
+                          <strong>器材費用折算：</strong> 原檔期費用折算為器材固定包價，全場器材費用只計一次。
                         </li>
                         {crewItems.length > 0 ? (
                           <li>
@@ -742,7 +746,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                           </li>
                         ) : (
                           <li>
-                            <strong>工作階段建立：</strong> 自動建立「進場」、「活動」、「撤場」三個空白階段供您自由設定。
+                            <strong>檔期建立：</strong> 建立「進場」「活動」「撤場」，器材費用先放在「活動」，可再調整歸屬。
                           </li>
                         )}
                         <li>
@@ -767,7 +771,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                         }}
                         className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-sm transition-colors flex items-center gap-1.5"
                       >
-                        確認轉換為階段計價
+                        確認使用整合檔期設定
                       </button>
                     </div>
                   </div>
@@ -777,10 +781,8 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
           </div>
         )}
 
-        {/* Period Charges or Stage Pricing Section */}
-        {project.pricing ? (
-          <StagePricingEditor project={project} onChange={setProject} />
-        ) : (
+        {/* Legacy Period Charges Section (Legacy quotes without stage pricing only) */}
+        {!project.pricing && (
           <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4 border-b border-slate-100 pb-3">
               <div>
@@ -796,7 +798,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   onClick={() => setShowConvertModal(true)}
                   className="flex items-center gap-1.5 text-xs bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3.5 py-2 rounded-lg font-bold shadow-sm transition-all"
                 >
-                  <Sparkles size={14} /> 轉換為階段計價 (進場 / 活動 / 撤場)
+                  <Sparkles size={14} /> 使用整合檔期設定
                 </button>
                 <button
                   type="button"
@@ -969,410 +971,382 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
           </div>
         )}
 
-        {/* Equipment Sections */}
-        {CATEGORIES.map(category => {
-          if (project.pricing && category.id === 'crew') return null;
+        {/* === Equipment Section === */}
+        {(() => {
+          const eligibleCategories = CATEGORIES.filter(cat => !(project.pricing && cat.id === 'crew'));
+          const populatedCategories = eligibleCategories.filter(cat => itemsByCategory(cat.id).length > 0);
+          const emptyCategories = eligibleCategories.filter(cat => itemsByCategory(cat.id).length === 0);
+
           return (
-            <div key={category.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className={`px-6 py-4 flex justify-between items-center ${category.bg} border-b border-slate-100`}>
-              <h3 className={`text-lg font-bold ${category.color} flex items-center gap-2`}>
-                {category.label}
-              </h3>
-              <button
-                onClick={() => setActiveCategoryModal(category.id)}
-                className="flex items-center gap-2 text-sm bg-white hover:bg-primary-50 text-slate-700 hover:text-primary-700 hover:border-primary-300 px-4 py-2 rounded-lg transition-all border border-slate-200 shadow-sm font-bold"
-              >
-                <Plus size={16} /> 新增器材
-              </button>
-            </div>
-
-            <div className="p-2 md:p-6">
-              {/* Header Row */}
-              <div className="hidden md:grid grid-cols-12 gap-4 text-xs font-bold text-slate-400 px-4 py-2 uppercase tracking-wider mb-2">
-                <div className="col-span-3">器材名稱 (Item)</div>
-                <div className="col-span-2">規格/備註 (Spec)</div>
-                <div className="col-span-1 text-center">數量</div>
-                <div className="col-span-1 text-center">單位</div>
-                <div className="col-span-2 text-right">{project.pricing ? '客報單價 (基準)' : '客報單價'}</div>
-                <div className="col-span-2 text-right" title={project.pricing ? '在階段計價架構下，此成本代表專案租賃之全場實際單位成本（不隨客戶天數或折率縮放）' : undefined}>
-                  {project.pricing ? '整檔成本' : '成本/利潤'}
+            <div className="space-y-6">
+              {/* Main Equipment Header */}
+              <div className="bg-white rounded-xl p-4 md:p-6 border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span className="w-1.5 h-6 bg-primary-500 rounded-full"></span>
+                    器材
+                  </h3>
                 </div>
-                <div className="col-span-1 text-center">設定</div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={showEquipmentCost}
+                      onChange={e => setShowEquipmentCost(e.target.checked)}
+                      className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
+                    />
+                    顯示器材成本
+                  </label>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                {itemsByCategory(category.id).map((item, index, categoryItems) => (
-                  <div key={item.id} className={`bg-slate-50 p-3 rounded-lg border transition-all group ${item.internalOnly ? 'border-dashed border-slate-300 bg-slate-100/50' : 'border-slate-200 hover:border-primary-300 hover:shadow-sm'}`}>
+              {/* Populated Category Cards */}
+              {populatedCategories.map(category => {
+                const categoryItems = itemsByCategory(category.id);
+                return (
+                  <div key={category.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className={`px-6 py-4 flex justify-between items-center ${category.bg} border-b border-slate-100`}>
+                      <h4 className={`text-base font-bold ${category.color} flex items-center gap-2`}>
+                        {category.label}
+                        <span className="text-xs font-normal text-slate-500 font-mono">
+                          ({categoryItems.length})
+                        </span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setActiveCategoryModal(category.id)}
+                        className="flex items-center gap-1.5 text-xs sm:text-sm bg-white hover:bg-primary-50 text-slate-700 hover:text-primary-700 hover:border-primary-300 px-3.5 py-1.5 rounded-lg transition-all border border-slate-200 shadow-xs font-bold"
+                      >
+                        <Plus size={15} /> 新增器材
+                      </button>
+                    </div>
 
-                    {/* Main Row */}
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 items-center relative">
-                      {/* Internal Badge */}
-                      {item.internalOnly && !expandedItems.has(item.id) && (
-                        <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 -translate-x-full items-center gap-1 text-slate-400 text-[10px] writing-vertical-lr py-2">
-                           <ListChecks size={12} className="rotate-90" />
-                           清單
-                        </div>
-                      )}
-
-                      {/* Name */}
-                      <div className="col-span-3 flex items-center gap-2">
-                        <div className="flex shrink-0 flex-col">
-                          <button
-                            onClick={() => moveItem(item.id, -1)}
-                            disabled={index === 0}
-                            aria-label={`上移 ${item.name || '未命名器材'}`}
-                            title="上移"
-                            className="p-2 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
-                          >
-                            <ChevronUp size={16} />
-                          </button>
-                          <button
-                            onClick={() => moveItem(item.id, 1)}
-                            disabled={index === categoryItems.length - 1}
-                            aria-label={`下移 ${item.name || '未命名器材'}`}
-                            title="下移"
-                            className="p-2 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
-                          >
-                            <ChevronDown size={16} />
-                          </button>
-                        </div>
-                        <div className="flex-1">
-                          <div className="md:hidden text-xs text-slate-400 font-bold mb-1">器材名稱</div>
-                          <input
-                            type="text"
-                            value={item.name}
-                            onChange={e => updateItem(item.id, 'name', e.target.value)}
-                            className={`w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-800 font-medium outline-none p-1 transition-all placeholder-slate-400 ${item.internalOnly ? 'text-slate-600' : ''}`}
-                            placeholder="輸入器材名稱..."
-                          />
-                          {!expandedItems.has(item.id) && item.subItems && item.subItems.length > 0 && (
-                            <div className="flex gap-1 mt-1 flex-wrap">
-                               {item.subItems.slice(0, 3).map((sub, i) => (
-                                 <span key={i} className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded-sm border border-slate-300">{sub}</span>
-                               ))}
-                               {item.subItems.length > 3 && <span className="text-[10px] text-slate-400">+{item.subItems.length - 3}</span>}
-                            </div>
-                          )}
-                        </div>
+                    <div className="p-2 md:p-6">
+                      {/* Header Row */}
+                      <div className="hidden md:grid grid-cols-12 gap-4 text-xs font-bold text-slate-400 px-4 py-2 uppercase tracking-wider mb-2">
+                        <div className={showEquipmentCost ? 'col-span-3' : 'col-span-4'}>器材名稱</div>
+                        <div className={showEquipmentCost ? 'col-span-2' : 'col-span-3'}>規格/備註</div>
+                        <div className="col-span-1 text-center">數量</div>
+                        <div className="col-span-1 text-center">單位</div>
+                        <div className="col-span-2 text-right">{project.pricing ? '客報單價 (基準)' : '客報單價'}</div>
+                        {showEquipmentCost && (
+                          <div className="col-span-2 text-right" title={project.pricing ? '此成本代表整檔器材的實際單位成本，不隨客報天數或折率縮放' : undefined}>
+                            {project.pricing ? '整檔成本' : '成本/利潤'}
+                          </div>
+                        )}
+                        <div className="col-span-1 text-center">設定</div>
                       </div>
 
-                      {/* Specs */}
-                      <div className="col-span-2">
-                         <div className="md:hidden text-xs text-slate-400 font-bold mt-2 mb-1">規格/備註</div>
-                         <input
-                          type="text"
-                          value={item.note || ''}
-                          onChange={e => updateItem(item.id, 'note', e.target.value)}
-                          className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-sm outline-none p-1 transition-all placeholder-slate-300"
-                          placeholder="規格..."
-                        />
-                      </div>
+                      <div className="space-y-3">
+                        {categoryItems.map((item, index) => (
+                          <div key={item.id} className={`bg-slate-50 p-3 rounded-lg border transition-all group ${item.internalOnly ? 'border-dashed border-slate-300 bg-slate-100/50' : 'border-slate-200 hover:border-primary-300 hover:shadow-sm'}`}>
+                            {/* Main Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 items-center relative">
+                              {/* Internal Badge */}
+                              {item.internalOnly && !expandedItems.has(item.id) && (
+                                <div className="hidden md:flex absolute -left-2 top-1/2 -translate-y-1/2 -translate-x-full items-center gap-1 text-slate-400 text-[10px] writing-vertical-lr py-2">
+                                   <ListChecks size={12} className="rotate-90" />
+                                   清單
+                                </div>
+                              )}
 
-                      {/* Qty / Unit / Price / Cost */}
-                      <div className="grid grid-cols-5 md:contents gap-2 mt-2 md:mt-0">
-                          <div>
-                              <div className="md:hidden text-xs text-slate-400 font-bold mb-1">數量</div>
-                              <div className="col-span-1">
-                                  <input type="number" value={item.quantity} onChange={e => updateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-800 text-center font-medium outline-none p-1" />
-                              </div>
-                          </div>
-                          <div>
-                              <div className="md:hidden text-xs text-slate-400 font-bold mb-1">單位</div>
-                              <div className="col-span-1">
-                                  <input type="text" value={item.unit} onChange={e => updateItem(item.id, 'unit', e.target.value)} className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-center text-sm outline-none p-1" />
-                              </div>
-                          </div>
-                          <div>
-                               <div className="md:hidden text-xs text-slate-400 font-bold mb-1">客報單價</div>
-                               <div className="col-span-2">
-                                  {item.internalOnly ? (
-                                    <div className="text-center text-xs text-slate-300 font-mono py-1 select-none">報價隱藏</div>
-                                  ) : (
-                                    <input type="number" value={item.price} onChange={e => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800" />
-                                  )}
-                              </div>
-                          </div>
-                          <div className="col-span-2">
-                               <div className="md:hidden text-xs text-slate-400 font-bold mb-1">
-                                 {project.pricing ? '整檔成本' : '成本/利潤'}
-                               </div>
-                               <div className="flex flex-col items-end">
+                              {/* Name */}
+                              <div className={`${showEquipmentCost ? 'col-span-3' : 'col-span-4'} flex items-center gap-2`}>
+                                <div className="flex shrink-0 flex-col">
+                                  <button
+                                    type="button"
+                                    onClick={() => moveItem(item.id, -1)}
+                                    disabled={index === 0}
+                                    aria-label={`上移 ${item.name || '未命名器材'}`}
+                                    title="上移"
+                                    className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveItem(item.id, 1)}
+                                    disabled={index === categoryItems.length - 1}
+                                    aria-label={`下移 ${item.name || '未命名器材'}`}
+                                    title="下移"
+                                    className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="md:hidden text-xs text-slate-400 font-bold mb-1">器材名稱</div>
                                   <input
-                                    type="number"
-                                    value={item.costPrice ?? 0}
-                                    onChange={e => updateItem(item.id, 'costPrice', parseFloat(e.target.value) || 0)}
-                                    className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800"
-                                    placeholder="成本"
-                                    title={project.pricing ? '此器材專案租賃全場實際單位成本（不隨客戶天數縮放）' : '單日成本'}
-                                  />
-                                  {item.price > 0 && !item.internalOnly && (!project.pricing || project.pricing.rental.mode === 'itemized') && (
-                                    <span className={`text-[10px] font-bold mt-0.5 ${getProfitColor(item)}`}>
-                                      利潤 {calcProfitMargin(item).toFixed(0)}%
-                                    </span>
-                                  )}
-                               </div>
-                          </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="col-span-1 flex justify-center items-center gap-1 mt-2 md:mt-0">
-                        <button
-                          onClick={() => toggleExpandItem(item.id)}
-                          className={`p-1.5 rounded-full transition-colors ${expandedItems.has(item.id) || (item.subItems && item.subItems.length > 0) || item.internalOnly ? 'bg-primary-50 text-primary-600 border border-primary-100' : 'text-slate-400 hover:bg-slate-200'}`}
-                          title="詳細設定 (內部清單/配件)"
-                        >
-                          {expandedItems.has(item.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                        </button>
-                        <button
-                          onClick={() => deleteItem(item.id)}
-                          className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* --- Expanded Details Section --- */}
-                    {expandedItems.has(item.id) && (
-                      <div className="mt-3 pt-3 border-t border-slate-200 animate-in slide-in-from-top-2 duration-200">
-                        <div className="flex flex-col md:flex-row gap-6">
-
-                           {/* Left: Item Visibility Settings */}
-                           <div className="md:w-1/4 space-y-3 bg-slate-100/50 p-3 rounded-lg border border-slate-200 h-fit">
-                              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-2">
-                                 <Package size={14} /> 顯示設定
-                              </label>
-                              <label className={`flex items-start gap-2 text-sm font-medium cursor-pointer select-none p-2 rounded transition-colors border ${item.internalOnly ? 'bg-primary-50 border-primary-200 text-primary-800' : 'bg-white border-transparent hover:bg-slate-100 text-slate-600'}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!item.internalOnly}
-                                  onChange={(e) => updateItem(item.id, 'internalOnly', e.target.checked)}
-                                  className="mt-1 w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
-                                />
-                                <div className="flex flex-col">
-                                   <span className="flex items-center gap-2">
-                                      <ListChecks size={14} className={item.internalOnly ? 'text-primary-600' : 'text-slate-400'} />
-                                      僅器材單顯示
-                                   </span>
-                                   <span className="text-[11px] opacity-70 font-normal leading-tight mt-0.5">
-                                     在報價單中隱藏此項目，僅在出庫清單中出現 (不計費)。
-                                   </span>
-                                </div>
-                              </label>
-                           </div>
-
-                           {/* Right: Sub-items Editor (For Equipment List) */}
-                           <div className="md:w-3/4 pl-0 md:pl-2">
-                              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-3">
-                                 <Tag size={14} /> 器材清單細項 (List Details)
-                              </label>
-
-                              <p className="text-[11px] text-slate-400 mb-2">
-                                 在此輸入線材、配件等細項。這些內容將以條列式顯示於「器材清單」中，報價單則顯示為「如附件」。
-                              </p>
-
-                              {/* Input Area */}
-                              <div className="flex gap-2 mb-3">
-                                 <input
                                     type="text"
-                                    value={activeInputId === item.id ? customSubItemInput : ''}
-                                    onFocus={() => { setActiveInputId(item.id); setCustomSubItemInput(''); }}
-                                    onChange={(e) => setCustomSubItemInput(e.target.value)}
-                                    onKeyDown={(e) => {
-                                       if (e.key === 'Enter') {
-                                          addSubItem(item.id, customSubItemInput);
-                                          setCustomSubItemInput('');
-                                       }
-                                    }}
-                                    placeholder="輸入細項名稱 (例如: HDMI線 3m)..."
-                                    className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none shadow-sm"
-                                 />
-                                 <button
-                                    onClick={() => {
-                                       addSubItem(item.id, customSubItemInput);
-                                       setCustomSubItemInput('');
-                                    }}
-                                    className="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700 font-bold"
-                                 >
-                                    新增
-                                 </button>
-                              </div>
-
-                              {/* Selected Tags List */}
-                              <div className="flex flex-col gap-1 mb-4">
-                                 {item.subItems && item.subItems.length > 0 ? (
-                                     <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
-                                        {item.subItems.map((sub, idx) => (
-                                          <div key={idx} className="flex justify-between items-center p-2 text-sm group hover:bg-slate-50">
-                                              <span className="flex items-center gap-2">
-                                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                                                  {sub}
-                                              </span>
-                                              <button onClick={() => removeSubItem(item.id, idx)} className="text-slate-400 hover:text-red-500 p-1">
-                                                  <X size={14} />
-                                              </button>
-                                          </div>
-                                        ))}
-                                     </div>
-                                 ) : (
-                                    <div className="text-sm text-slate-400 italic py-2 px-3 border border-dashed border-slate-200 rounded bg-slate-50">
-                                       尚無細項內容 (請使用上方輸入框或下方快速選擇)
+                                    value={item.name}
+                                    onChange={e => updateItem(item.id, 'name', e.target.value)}
+                                    aria-label="器材名稱"
+                                    className={`w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-800 font-medium outline-none p-1 transition-all placeholder-slate-400 ${item.internalOnly ? 'text-slate-600' : ''}`}
+                                    placeholder="輸入器材名稱..."
+                                  />
+                                  {!expandedItems.has(item.id) && item.subItems && item.subItems.length > 0 && (
+                                    <div className="flex gap-1 mt-1 flex-wrap">
+                                       {item.subItems.slice(0, 3).map((sub, i) => (
+                                         <span key={i} className="text-[10px] bg-slate-200 text-slate-600 px-1 rounded-sm border border-slate-300">{sub}</span>
+                                       ))}
+                                       {item.subItems.length > 3 && <span className="text-[10px] text-slate-400">+{item.subItems.length - 3}</span>}
                                     </div>
-                                 )}
-                              </div>
-
-                              {/* Quick Suggestions */}
-                              <div className="bg-slate-100 p-2.5 rounded-lg border border-slate-200">
-                                 <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">快速加入常用配件</p>
-                                 <div className="flex flex-wrap gap-2">
-                                    {ACCESSORY_SUGGESTIONS[item.category]?.map((sugg, i) => (
-                                       <button
-                                          key={i}
-                                          onClick={() => addSubItem(item.id, sugg)}
-                                          className="text-xs bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded shadow-sm hover:border-primary-400 hover:text-primary-700 hover:bg-primary-50 transition-all active:scale-95"
-                                       >
-                                          + {sugg}
-                                       </button>
-                                    ))}
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {itemsByCategory(category.id).length === 0 && (
-                  <div className="text-center py-8 text-slate-400 italic border-2 border-dashed border-slate-100 rounded-lg">
-                    尚未選擇器材，請點擊上方「新增器材」按鈕
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          );
-        })}
-
-        {/* === Subcontract Management Section === */}
-        <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 flex justify-between items-center bg-amber-50 border-b border-amber-200">
-            <h3 className="text-lg font-bold text-amber-700 flex items-center gap-2">
-              <Send size={20} /> 發包單管理
-            </h3>
-            <button
-              onClick={addSubcontract}
-              className="flex items-center gap-2 text-sm bg-white hover:bg-amber-50 text-amber-700 hover:border-amber-400 px-4 py-2 rounded-lg transition-all border border-amber-300 shadow-sm font-bold"
-            >
-              <Plus size={16} /> 新增發包單
-            </button>
-          </div>
-
-          <div className="p-4 md:p-6 space-y-4">
-            {(project.subcontracts || []).length === 0 ? (
-              <div className="text-center py-8 text-slate-400 italic border-2 border-dashed border-amber-100 rounded-lg">
-                尚無發包單，點擊「新增發包單」建立
-              </div>
-            ) : (
-              (project.subcontracts || []).map((sub) => (
-                <div key={sub.id} className="border border-amber-200 rounded-lg overflow-hidden">
-                  {/* Subcontract Header */}
-                  <div
-                    className="flex items-center justify-between px-4 py-3 bg-amber-50/50 cursor-pointer hover:bg-amber-50 transition-colors"
-                    onClick={() => toggleExpandSub(sub.id)}
-                  >
-                    <div className="flex items-center gap-3">
-                      {expandedSubs.has(sub.id) ? <ChevronUp size={16} className="text-amber-500" /> : <ChevronDown size={16} className="text-amber-500" />}
-                      <div>
-                        <span className="font-bold text-slate-800">{sub.vendorName || '未命名廠商'}</span>
-                        <span className="text-xs text-slate-400 ml-2">{sub.itemIds.length} 個項目</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteSubcontract(sub.id); }}
-                      className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  {/* Expanded Content */}
-                  {expandedSubs.has(sub.id) && (
-                    <div className="p-4 border-t border-amber-200 space-y-4">
-                      {/* Vendor Fields */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-slate-500 text-xs font-bold uppercase mb-1">協力廠商名稱</label>
-                          <input type="text" value={sub.vendorName} onChange={e => updateSubcontract(sub.id, 'vendorName', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="廠商名稱" />
-                        </div>
-                        <div>
-                          <label className="block text-slate-500 text-xs font-bold uppercase mb-1">廠商統編</label>
-                          <input type="text" value={sub.vendorTaxId} onChange={e => updateSubcontract(sub.id, 'vendorTaxId', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="12345678" />
-                        </div>
-                        <div>
-                          <label className="block text-slate-500 text-xs font-bold uppercase mb-1">聯繫人</label>
-                          <input type="text" value={sub.vendorContact} onChange={e => updateSubcontract(sub.id, 'vendorContact', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none" />
-                        </div>
-                        <div>
-                          <label className="block text-slate-500 text-xs font-bold uppercase mb-1">廠商電話</label>
-                          <input type="text" value={sub.vendorPhone} onChange={e => updateSubcontract(sub.id, 'vendorPhone', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="手機或市話" />
-                        </div>
-                        <div>
-                          <label className="block text-slate-500 text-xs font-bold uppercase mb-1">交台時間</label>
-                          <input type="text" value={sub.handoverTime} onChange={e => updateSubcontract(sub.id, 'handoverTime', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none" placeholder="例如: 2024-01-15 10:00" />
-                        </div>
-                      </div>
-
-                      {/* Item Picker */}
-                      <div>
-                        <div className="flex justify-between items-center mb-2">
-                          <label className="block text-slate-500 text-xs font-bold uppercase">選擇發包項目</label>
-                          <span className="text-xs text-slate-400 font-mono">已選 {sub.itemIds.length} 項</span>
-                        </div>
-                        <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-                          {(() => {
-                            const allResources = getProjectResources(project);
-                            return CATEGORIES.map(cat => {
-                              const catItems = allResources.filter(i => i.category === cat.id);
-                              if (catItems.length === 0) return null;
-                              return (
-                                <div key={cat.id}>
-                                  <div className={`px-3 py-1.5 text-xs font-bold ${cat.color} ${cat.bg}`}>{cat.label}</div>
-                                  {catItems.map(item => (
-                                    <label
-                                      key={item.id}
-                                      className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-amber-50/50 transition-colors ${sub.itemIds.includes(item.id) ? 'bg-amber-50' : ''}`}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={sub.itemIds.includes(item.id)}
-                                        onChange={() => toggleSubcontractItem(sub.id, item.id)}
-                                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
-                                      />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm text-slate-700 font-medium truncate">{item.name || '未命名項目'}</div>
-                                        {item.note && (
-                                          <div className="text-[11px] text-slate-400 truncate">{item.note}</div>
-                                        )}
-                                      </div>
-                                      <span className="text-xs text-slate-400 font-mono shrink-0">{item.quantity} {item.unit}</span>
-                                    </label>
-                                  ))}
+                                  )}
                                 </div>
-                              );
-                            });
-                          })()}
-                        </div>
+                              </div>
+
+                              {/* Specs */}
+                              <div className={showEquipmentCost ? 'col-span-2' : 'col-span-3'}>
+                                 <div className="md:hidden text-xs text-slate-400 font-bold mt-2 mb-1">規格/備註</div>
+                                 <input
+                                  type="text"
+                                  value={item.note || ''}
+                                  onChange={e => updateItem(item.id, 'note', e.target.value)}
+                                  aria-label={`${item.name || '項目'} 規格備註`}
+                                  className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-sm outline-none p-1 transition-all placeholder-slate-300"
+                                  placeholder="規格..."
+                                />
+                              </div>
+
+                              {/* Qty / Unit / Price / Cost */}
+                              <div className={`${showEquipmentCost ? 'grid grid-cols-5' : 'grid grid-cols-4'} md:contents gap-2 mt-2 md:mt-0`}>
+                                  <div className="col-span-1">
+                                      <div className="md:hidden text-xs text-slate-400 font-bold mb-1">數量</div>
+                                      <input
+                                        type="number"
+                                        value={item.quantity}
+                                        onChange={e => updateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                        aria-label={`${item.name || '項目'} 數量`}
+                                        className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-800 text-center font-medium outline-none p-1"
+                                      />
+                                  </div>
+                                  <div className="col-span-1">
+                                      <div className="md:hidden text-xs text-slate-400 font-bold mb-1">單位</div>
+                                      <input
+                                        type="text"
+                                        value={item.unit}
+                                        onChange={e => updateItem(item.id, 'unit', e.target.value)}
+                                        aria-label={`${item.name || '項目'} 單位`}
+                                        className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-center text-sm outline-none p-1"
+                                      />
+                                  </div>
+                                  <div className={`${showEquipmentCost ? 'col-span-1 md:col-span-2' : 'col-span-2 md:col-span-2'}`}>
+                                       <div className="md:hidden text-xs text-slate-400 font-bold mb-1">客報單價</div>
+                                       <div>
+                                          {item.internalOnly ? (
+                                            <div className="text-center text-xs text-slate-300 font-mono py-1 select-none">報價隱藏</div>
+                                          ) : (
+                                            <input
+                                              type="number"
+                                              value={item.price}
+                                              onChange={e => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                                              aria-label={`${item.name || '項目'} 客報單價`}
+                                              className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800"
+                                            />
+                                          )}
+                                      </div>
+                                  </div>
+                                  {showEquipmentCost && (
+                                    <div className="col-span-2 md:col-span-2">
+                                         <div className="md:hidden text-xs text-slate-400 font-bold mb-1">
+                                           {project.pricing ? '整檔成本' : '成本/利潤'}
+                                         </div>
+                                         <div className="flex flex-col items-end">
+                                            <input
+                                              type="number"
+                                              value={item.costPrice ?? 0}
+                                              onChange={e => updateItem(item.id, 'costPrice', parseFloat(e.target.value) || 0)}
+                                              aria-label={`${item.name || '項目'} 成本`}
+                                              className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800"
+                                              placeholder="成本"
+                                              title={project.pricing ? '整檔器材的實際單位成本，不隨客報天數縮放' : '單日成本'}
+                                            />
+                                            {item.price > 0 && !item.internalOnly && (!project.pricing || project.pricing.rental.mode === 'itemized') && (
+                                              <span className={`text-[10px] font-bold mt-0.5 ${getProfitColor(item)}`}>
+                                                利潤 {calcProfitMargin(item).toFixed(0)}%
+                                              </span>
+                                            )}
+                                         </div>
+                                    </div>
+                                  )}
+                              </div>
+
+                              {/* Actions */}
+                              <div className="col-span-1 flex justify-center items-center gap-1 mt-2 md:mt-0">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandItem(item.id)}
+                                  aria-label={`詳細設定 ${item.name || '未命名器材'}`}
+                                  className={`p-1.5 rounded-full transition-colors ${expandedItems.has(item.id) || (item.subItems && item.subItems.length > 0) || item.internalOnly ? 'bg-primary-50 text-primary-600 border border-primary-100' : 'text-slate-400 hover:bg-slate-200'}`}
+                                  title="詳細設定 (內部清單/配件)"
+                                >
+                                  {expandedItems.has(item.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteItem(item.id)}
+                                  aria-label={`刪除 ${item.name || '未命名器材'}`}
+                                  className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                                  title="刪除"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* --- Expanded Details Section --- */}
+                            {expandedItems.has(item.id) && (
+                              <div className="mt-3 pt-3 border-t border-slate-200 animate-in slide-in-from-top-2 duration-200">
+                                <div className="flex flex-col md:flex-row gap-6">
+                                   {/* Left: Item Visibility Settings */}
+                                   <div className="md:w-1/4 space-y-3 bg-slate-100/50 p-3 rounded-lg border border-slate-200 h-fit">
+                                      <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-2">
+                                         <Package size={14} /> 顯示設定
+                                      </label>
+                                      <label className={`flex items-start gap-2 text-sm font-medium cursor-pointer select-none p-2 rounded transition-colors border ${item.internalOnly ? 'bg-primary-50 border-primary-200 text-primary-800' : 'bg-white border-transparent hover:bg-slate-100 text-slate-600'}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={!!item.internalOnly}
+                                          onChange={(e) => updateItem(item.id, 'internalOnly', e.target.checked)}
+                                          className="mt-1 w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
+                                        />
+                                        <div className="flex flex-col">
+                                           <span className="flex items-center gap-2">
+                                              <ListChecks size={14} className={item.internalOnly ? 'text-primary-600' : 'text-slate-400'} />
+                                              僅器材單顯示
+                                           </span>
+                                           <span className="text-[11px] opacity-70 font-normal leading-tight mt-0.5">
+                                             在報價單中隱藏此項目，僅在出庫清單中出現 (不計費)。
+                                           </span>
+                                        </div>
+                                      </label>
+                                   </div>
+
+                                   {/* Right: Sub-items Editor */}
+                                   <div className="md:w-3/4 pl-0 md:pl-2">
+                                      <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-3">
+                                         <Tag size={14} /> 器材清單細項
+                                      </label>
+                                      <p className="text-[11px] text-slate-400 mb-2">
+                                         在此輸入線材、配件等細項。這些內容將以條列式顯示於「器材清單」中，報價單則顯示為「如附件」。
+                                      </p>
+                                      <div className="flex gap-2 mb-3">
+                                         <input
+                                            type="text"
+                                            value={activeInputId === item.id ? customSubItemInput : ''}
+                                            onFocus={() => { setActiveInputId(item.id); setCustomSubItemInput(''); }}
+                                            onChange={(e) => setCustomSubItemInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                               if (e.key === 'Enter') {
+                                                  addSubItem(item.id, customSubItemInput);
+                                                  setCustomSubItemInput('');
+                                               }
+                                            }}
+                                            placeholder="輸入細項名稱 (例如: HDMI線 3m)..."
+                                            aria-label="輸入細項名稱"
+                                            className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none shadow-sm"
+                                         />
+                                         <button
+                                            type="button"
+                                            onClick={() => {
+                                               addSubItem(item.id, customSubItemInput);
+                                               setCustomSubItemInput('');
+                                            }}
+                                            className="bg-slate-800 text-white px-4 py-2 rounded text-sm hover:bg-slate-700 font-bold"
+                                         >
+                                            新增
+                                         </button>
+                                      </div>
+
+                                      {/* Selected Tags List */}
+                                      <div className="flex flex-col gap-1 mb-4">
+                                         {item.subItems && item.subItems.length > 0 ? (
+                                             <div className="bg-white border border-slate-200 rounded-lg divide-y divide-slate-100">
+                                                {item.subItems.map((sub, idx) => (
+                                                  <div key={idx} className="flex justify-between items-center p-2 text-sm group hover:bg-slate-50">
+                                                      <span className="flex items-center gap-2">
+                                                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                                          {sub}
+                                                      </span>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => removeSubItem(item.id, idx)}
+                                                        aria-label={`移除配件 ${sub}`}
+                                                        className="text-slate-400 hover:text-red-500 p-1"
+                                                      >
+                                                          <X size={14} />
+                                                      </button>
+                                                  </div>
+                                                ))}
+                                             </div>
+                                         ) : (
+                                            <div className="text-sm text-slate-400 italic py-2 px-3 border border-dashed border-slate-200 rounded bg-slate-50">
+                                               尚無細項內容 (請使用上方輸入框或下方快速選擇)
+                                            </div>
+                                         )}
+                                      </div>
+
+                                      {/* Quick Suggestions */}
+                                      <div className="bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+                                         <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">快速加入常用配件</p>
+                                         <div className="flex flex-wrap gap-2">
+                                            {ACCESSORY_SUGGESTIONS[item.category]?.map((sugg, i) => (
+                                               <button
+                                                  key={i}
+                                                  type="button"
+                                                  onClick={() => addSubItem(item.id, sugg)}
+                                                  className="text-xs bg-white border border-slate-300 text-slate-600 px-2 py-1 rounded shadow-sm hover:border-primary-400 hover:text-primary-700 hover:bg-primary-50 transition-all active:scale-95"
+                                               >
+                                                  + {sugg}
+                                               </button>
+                                            ))}
+                                         </div>
+                                      </div>
+                                   </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+                  </div>
+                );
+              })}
 
-        {/* Cost / Profit Summary */}
+              {/* Compact Add Category Buttons for Empty Categories */}
+              {emptyCategories.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 px-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                      <Plus size={14} className="text-primary-600" />
+                      {populatedCategories.length === 0 ? '選擇類別以新增器材' : '新增其他類別器材'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {emptyCategories.map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setActiveCategoryModal(cat.id)}
+                        className="flex items-center gap-1.5 text-xs bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-primary-700 px-3 py-1.5 rounded-lg border border-dashed border-slate-300 hover:border-primary-400 transition-all font-medium"
+                      >
+                        <span>+ {cat.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Unified schedule: equipment fees, dates, people and transport */}
+        {project.pricing && (
+          <StagePricingEditor project={project} onChange={setProject} />
+        )}
+
+        {/* Quote Summary & Totals */}
         {(() => {
           const totals = calculateProject(project);
           const clientSubtotal = totals.subtotal;
@@ -1387,149 +1361,364 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
           const neg = project.negotiatedPrice;
           const negProfit = neg ? neg - costTotal : 0;
           const negRate = neg && neg > 0 ? ((neg - costTotal) / neg) * 100 : 0;
+
           return (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-6 py-4 bg-emerald-50 border-b border-slate-100">
-                <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
-                  <span className="w-1.5 h-6 bg-emerald-500 rounded-full"></span>
-                  成本利潤摘要
+              <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-primary-500 rounded-full"></span>
+                  報價合計
                 </h3>
+                {neg != null && neg > 0 && (
+                  <span className="text-xs bg-amber-100 text-amber-800 font-bold px-2.5 py-1 rounded-full border border-amber-200">
+                    議價生效中
+                  </span>
+                )}
               </div>
-              <div className="p-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+              <div className="p-6 space-y-6">
+                {/* Primary Row/Grid: 未稅合計, 稅金, 報價總額 (and 議價後總額 when active) */}
+                <div className={`grid grid-cols-2 ${neg != null && neg > 0 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                    <div className="text-xs text-slate-400 font-bold uppercase mb-1">客報合計（含稅）</div>
-                    <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(clientTotal)}</div>
+                    <div className="text-xs text-slate-500 font-bold uppercase mb-1">未稅合計</div>
+                    <div className="text-xl font-mono font-bold text-slate-800">{formatCurrency(clientSubtotal)}</div>
                   </div>
+
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                    <div className="text-xs text-slate-400 font-bold uppercase mb-1">成本合計（含稅）</div>
-                    <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(costTotal)}</div>
+                    <div className="text-xs text-slate-500 font-bold uppercase mb-1">稅金</div>
+                    <div className="text-xl font-mono font-bold text-slate-800">{formatCurrency(clientTax)}</div>
                   </div>
-                  <div className={`rounded-lg p-4 border ${grossRate >= 20 ? 'bg-emerald-50 border-emerald-200' : grossRate >= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="text-xs font-bold uppercase mb-1 text-slate-500">毛利（未稅）</div>
-                    <div className={`text-lg font-mono font-bold ${grossRate >= 20 ? 'text-emerald-700' : grossRate >= 10 ? 'text-amber-700' : 'text-red-600'}`}>
-                      {formatCurrency(grossProfit)}
-                      <span className="text-xs ml-1">({grossRate.toFixed(1)}%)</span>
+
+                  <div className={`bg-slate-50 rounded-lg p-4 border border-slate-100 ${neg != null && neg > 0 ? '' : 'col-span-2 lg:col-span-1'}`}>
+                    <div className="text-xs text-slate-500 font-bold uppercase mb-1">
+                      {neg != null && neg > 0 ? '報價總額 (原計)' : '報價總額'}
+                    </div>
+                    <div className={`text-xl font-mono font-bold ${neg != null && neg > 0 ? 'text-slate-400 line-through' : 'text-primary-700'}`}>
+                      {formatCurrency(clientTotal)}
                     </div>
                   </div>
-                  <div className={`rounded-lg p-4 border ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="text-xs font-bold uppercase mb-1 text-slate-500">淨利（含稅）</div>
-                    <div className={`text-lg font-mono font-bold ${netProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-                      {formatCurrency(netProfit)}
+
+                  {neg != null && neg > 0 && (
+                    <div className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                      <div className="text-xs text-amber-700 font-bold uppercase mb-1 flex items-center justify-between">
+                        <span>議價後總額</span>
+                        <span className="text-[10px] bg-amber-200/80 text-amber-800 px-1.5 py-0.5 rounded font-medium">實際應收</span>
+                      </div>
+                      <div className="text-xl font-mono font-bold text-amber-900">{formatCurrency(neg)}</div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                {neg != null && neg > 0 && (
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-amber-50 rounded-lg p-4 border border-amber-200 col-span-2">
-                      <div className="text-xs text-amber-600 font-bold uppercase mb-1">議價後金額（含稅）</div>
-                      <div className="text-lg font-mono font-bold text-amber-800">{formatCurrency(neg)}</div>
-                    </div>
-                    <div className={`rounded-lg p-4 border col-span-2 ${negProfit >= 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="text-xs font-bold uppercase mb-1 text-slate-500">議價後淨利</div>
-                      <div className={`text-lg font-mono font-bold ${negProfit >= 0 ? 'text-amber-800' : 'text-red-600'}`}>
-                        {formatCurrency(negProfit)}
-                        <span className="text-xs ml-1">({negRate.toFixed(1)}%)</span>
+                {/* Default-closed '成本與毛利' Disclosure */}
+                <div className="border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCostProfit(prev => !prev)}
+                    className="flex items-center justify-between w-full text-left py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors text-slate-700 font-medium text-sm border border-transparent hover:border-slate-200"
+                    aria-expanded={showCostProfit}
+                    aria-controls="quote-cost-profit"
+                  >
+                    <span className="flex items-center gap-2 font-bold text-slate-700">
+                      <span className="w-1.5 h-4 bg-emerald-500 rounded-full"></span>
+                      成本與毛利
+                    </span>
+                    {showCostProfit ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                  </button>
+
+                  {showCostProfit && (
+                    <div id="quote-cost-profit" className="mt-4 pt-4 border-t border-slate-100 space-y-4">
+                      {/* Secondary metrics */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                          <div className="text-xs text-slate-400 font-bold uppercase mb-1">成本合計（含稅）</div>
+                          <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(costTotal)}</div>
+                        </div>
+                        <div className={`rounded-lg p-4 border ${grossRate >= 20 ? 'bg-emerald-50 border-emerald-200' : grossRate >= 10 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                          <div className="text-xs font-bold uppercase mb-1 text-slate-500">毛利（未稅）</div>
+                          <div className={`text-lg font-mono font-bold ${grossRate >= 20 ? 'text-emerald-700' : grossRate >= 10 ? 'text-amber-700' : 'text-red-600'}`}>
+                            {formatCurrency(grossProfit)}
+                            <span className="text-xs ml-1">({grossRate.toFixed(1)}%)</span>
+                          </div>
+                        </div>
+                        <div className={`rounded-lg p-4 border ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                          <div className="text-xs font-bold uppercase mb-1 text-slate-500">淨利（含稅）</div>
+                          <div className={`text-lg font-mono font-bold ${netProfit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                            {formatCurrency(netProfit)}
+                          </div>
+                        </div>
+                        {neg != null && neg > 0 ? (
+                          <div className={`rounded-lg p-4 border ${negProfit >= 0 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
+                            <div className="text-xs font-bold uppercase mb-1 text-slate-500">議價後淨利</div>
+                            <div className={`text-lg font-mono font-bold ${negProfit >= 0 ? 'text-amber-800' : 'text-red-600'}`}>
+                              {formatCurrency(negProfit)}
+                              <span className="text-xs ml-1">({negRate.toFixed(1)}%)</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                            <div className="text-xs text-slate-400 font-bold uppercase mb-1">成本稅金</div>
+                            <div className="text-lg font-mono font-bold text-slate-800">{formatCurrency(costTax)}</div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* Breakdown: Structural for Stage Pricing, Category for Legacy */}
-                {project.pricing ? (
-                  <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
-                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">階段與租賃結構利潤</div>
-                    <div className="space-y-1.5">
-                      {/* Equipment Rental line */}
-                      {(() => {
-                        const rentalCost = project.items.reduce((s, i) => s + calcCostTotal(i), 0);
-                        const rentalProfit = totals.rentalSubtotal - rentalCost;
-                        const rentalRate = totals.rentalSubtotal > 0 ? (rentalProfit / totals.rentalSubtotal) * 100 : 0;
-                        const modeLabel =
-                          project.pricing.rental.mode === 'fixed'
-                            ? '固定包套租金'
-                            : project.pricing.rental.mode === 'periods'
-                            ? '依檔期指定計價'
-                            : '整檔器材明細加總';
+                      {/* Structural / Category Breakdown */}
+                      {project.pricing ? (
+                        <div className="border-t border-slate-100 pt-4 space-y-3">
+                        <div className="text-xs font-bold text-slate-400 uppercase mb-2">器材與階段利潤</div>
+                          <div className="space-y-1.5">
+                            {/* Equipment Rental line */}
+                            {(() => {
+                              const rentalCost = project.items.reduce((s, i) => s + calcCostTotal(i), 0);
+                              const rentalProfit = totals.rentalSubtotal - rentalCost;
+                              const rentalRate = totals.rentalSubtotal > 0 ? (rentalProfit / totals.rentalSubtotal) * 100 : 0;
+                              const modeLabel =
+                                project.pricing.rental.mode === 'fixed'
+                                  ? '器材固定包價'
+                                  : project.pricing.rental.mode === 'periods'
+                                  ? '依檔期指定計價'
+                                  : '整檔器材明細加總';
 
-                        return (
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-primary-700">器材租賃</span>
-                              <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                {modeLabel}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
-                              <span className="text-slate-500">客報 {formatCurrency(totals.rentalSubtotal)}</span>
-                              <span className="text-slate-400">成本 {formatCurrency(rentalCost)}</span>
-                              <span className={`font-bold ${rentalRate >= 20 ? 'text-emerald-600' : rentalRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {formatCurrency(rentalProfit)} ({rentalRate.toFixed(0)}%)
-                              </span>
-                            </div>
+                              return (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-primary-700">器材費用</span>
+                                    <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                      {modeLabel}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
+                                    <span className="text-slate-500">客報 {formatCurrency(totals.rentalSubtotal)}</span>
+                                    <span className="text-slate-400">成本 {formatCurrency(rentalCost)}</span>
+                                    <span className={`font-bold ${rentalRate >= 20 ? 'text-emerald-600' : rentalRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {formatCurrency(rentalProfit)} ({rentalRate.toFixed(0)}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Work Stages lines */}
+                            {project.pricing.stages.map(stage => {
+                              const st = calcWorkStage(stage);
+                              const profit = st.subtotal - st.costSubtotal;
+                              const rate = st.subtotal > 0 ? (profit / st.subtotal) * 100 : 0;
+
+                              return (
+                                <div key={stage.id} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-blue-700">{stage.name || '未命名階段'}</span>
+                                    <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                      {stage.pricingMode === 'fixed' ? '固定包套' : '細項加總'}
+                                      {stage.displayMode === 'summary' && ' · 摘要呈現'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
+                                    <span className="text-slate-500">客報 {formatCurrency(st.subtotal)}</span>
+                                    <span className="text-slate-400">成本 {formatCurrency(st.costSubtotal)}</span>
+                                    <span className={`font-bold ${rate >= 20 ? 'text-emerald-600' : rate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {formatCurrency(profit)} ({rate.toFixed(0)}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })()}
-
-                      {/* Work Stages lines */}
-                      {project.pricing.stages.map(stage => {
-                        const st = calcWorkStage(stage);
-                        const profit = st.subtotal - st.costSubtotal;
-                        const rate = st.subtotal > 0 ? (profit / st.subtotal) * 100 : 0;
-
-                        return (
-                          <div key={stage.id} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-blue-700">{stage.name || '未命名階段'}</span>
-                              <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                                {stage.pricingMode === 'fixed' ? '固定包套' : '細項加總'}
-                                {stage.displayMode === 'summary' && ' · 摘要呈現'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
-                              <span className="text-slate-500">客報 {formatCurrency(st.subtotal)}</span>
-                              <span className="text-slate-400">成本 {formatCurrency(st.costSubtotal)}</span>
-                              <span className={`font-bold ${rate >= 20 ? 'text-emerald-600' : rate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {formatCurrency(profit)} ({rate.toFixed(0)}%)
-                              </span>
-                            </div>
+                        </div>
+                      ) : (
+                        <div className="border-t border-slate-100 pt-4">
+                          <div className="text-xs font-bold text-slate-400 uppercase mb-2">分類利潤</div>
+                          <div className="space-y-1">
+                            {CATEGORIES.map(cat => {
+                              const catItems = project.items.filter(i => i.category === cat.id);
+                              if (catItems.length === 0) return null;
+                              const catClient = catItems.filter(i => !i.internalOnly).reduce((s, i) => s + calcClientTotal(i), 0);
+                              const catCost = catItems.reduce((s, i) => s + calcCostTotal(i), 0);
+                              const catProfit = catClient - catCost;
+                              const catRate = catClient > 0 ? (catProfit / catClient) * 100 : 0;
+                              return (
+                                <div key={cat.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
+                                  <span className={`font-bold ${cat.color}`}>{cat.label}</span>
+                                  <div className="flex items-center gap-4 font-mono text-xs">
+                                    <span className="text-slate-400">客報 {formatCurrency(catClient)}</span>
+                                    <span className="text-slate-400">成本 {formatCurrency(catCost)}</span>
+                                    <span className={`font-bold ${catRate >= 20 ? 'text-emerald-600' : catRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {formatCurrency(catProfit)} ({catRate.toFixed(0)}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 border-t border-slate-100 pt-4">
-                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">分類利潤</div>
-                    <div className="space-y-1">
-                      {CATEGORIES.map(cat => {
-                        const catItems = project.items.filter(i => i.category === cat.id);
-                        if (catItems.length === 0) return null;
-                        const catClient = catItems.filter(i => !i.internalOnly).reduce((s, i) => s + calcClientTotal(i), 0);
-                        const catCost = catItems.reduce((s, i) => s + calcCostTotal(i), 0);
-                        const catProfit = catClient - catCost;
-                        const catRate = catClient > 0 ? (catProfit / catClient) * 100 : 0;
-                        return (
-                          <div key={cat.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
-                            <span className={`font-bold ${cat.color}`}>{cat.label}</span>
-                            <div className="flex items-center gap-4 font-mono text-xs">
-                              <span className="text-slate-400">客報 {formatCurrency(catClient)}</span>
-                              <span className="text-slate-400">成本 {formatCurrency(catCost)}</span>
-                              <span className={`font-bold ${catRate >= 20 ? 'text-emerald-600' : catRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
-                                {formatCurrency(catProfit)} ({catRate.toFixed(0)}%)
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );
         })()}
+
+        {/* === Subcontract Management Section (Disclosure) === */}
+        {(() => {
+          const subcontracts = project.subcontracts || [];
+          const activeSubCount = subcontracts.length;
+
+          return (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div
+                className="px-6 py-4 flex justify-between items-center bg-slate-50 cursor-pointer hover:bg-slate-100/70 transition-colors"
+                onClick={() => setShowSubcontractSection(prev => !prev)}
+                role="button"
+                tabIndex={0}
+                aria-expanded={showSubcontractSection}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowSubcontractSection(prev => !prev);
+                  }
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <Send size={18} className="text-amber-600" />
+                    發包設定
+                  </h3>
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold font-mono ${activeSubCount > 0 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-200 text-slate-600'}`}>
+                    {activeSubCount} 張發包單
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">
+                    {showSubcontractSection ? '收合' : '展開設定'}
+                  </span>
+                  {showSubcontractSection ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+                </div>
+              </div>
+
+              {showSubcontractSection && (
+                <div className="p-4 md:p-6 border-t border-slate-100 space-y-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-xs text-slate-500">
+                      建立與管理協力廠商發包單，指派專案設備項目與交台聯繫資訊。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={addSubcontract}
+                      className="flex items-center gap-1.5 text-xs sm:text-sm bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-1.5 rounded-lg transition-all shadow-xs font-bold"
+                    >
+                      <Plus size={15} /> 新增發包單
+                    </button>
+                  </div>
+
+                  {subcontracts.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 italic border-2 border-dashed border-slate-100 rounded-lg">
+                      尚無發包單，點擊「新增發包單」建立
+                    </div>
+                  ) : (
+                    subcontracts.map((sub) => (
+                       <div key={sub.id} className="border border-amber-200 rounded-lg overflow-hidden">
+                         {/* Subcontract Header */}
+                         <div
+                           className="flex items-center justify-between px-4 py-3 bg-amber-50/50 cursor-pointer hover:bg-amber-50 transition-colors"
+                           onClick={() => toggleExpandSub(sub.id)}
+                         >
+                           <div className="flex items-center gap-3">
+                             {expandedSubs.has(sub.id) ? <ChevronUp size={16} className="text-amber-500" /> : <ChevronDown size={16} className="text-amber-500" />}
+                             <div>
+                               <span className="font-bold text-slate-800">{sub.vendorName || '未命名廠商'}</span>
+                               <span className="text-xs text-slate-400 ml-2">{sub.itemIds.length} 個項目</span>
+                             </div>
+                           </div>
+                           <button
+                             type="button"
+                             onClick={(e) => { e.stopPropagation(); deleteSubcontract(sub.id); }}
+                             aria-label={`刪除發包單 ${sub.vendorName || ''}`}
+                             className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
+                           >
+                             <Trash2 size={16} />
+                           </button>
+                         </div>
+
+                         {/* Expanded Content */}
+                         {expandedSubs.has(sub.id) && (
+                           <div className="p-4 border-t border-amber-200 space-y-4">
+                             {/* Vendor Fields */}
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                               <div>
+                                 <label className="block text-slate-500 text-xs font-bold uppercase mb-1">協力廠商名稱</label>
+                                 <input type="text" value={sub.vendorName} onChange={e => updateSubcontract(sub.id, 'vendorName', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none text-sm" placeholder="廠商名稱" />
+                               </div>
+                               <div>
+                                 <label className="block text-slate-500 text-xs font-bold uppercase mb-1">廠商統編</label>
+                                 <input type="text" value={sub.vendorTaxId} onChange={e => updateSubcontract(sub.id, 'vendorTaxId', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none text-sm" placeholder="12345678" />
+                               </div>
+                               <div>
+                                 <label className="block text-slate-500 text-xs font-bold uppercase mb-1">聯繫人</label>
+                                 <input type="text" value={sub.vendorContact} onChange={e => updateSubcontract(sub.id, 'vendorContact', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none text-sm" />
+                               </div>
+                               <div>
+                                 <label className="block text-slate-500 text-xs font-bold uppercase mb-1">廠商電話</label>
+                                 <input type="text" value={sub.vendorPhone} onChange={e => updateSubcontract(sub.id, 'vendorPhone', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none text-sm" placeholder="手機或市話" />
+                               </div>
+                               <div>
+                                 <label className="block text-slate-500 text-xs font-bold uppercase mb-1">交台時間</label>
+                                 <input type="text" value={sub.handoverTime} onChange={e => updateSubcontract(sub.id, 'handoverTime', e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-amber-500 outline-none text-sm" placeholder="例如: 2024-01-15 10:00" />
+                               </div>
+                             </div>
+
+                             {/* Item Picker */}
+                             <div>
+                               <div className="flex justify-between items-center mb-2">
+                                 <label className="block text-slate-500 text-xs font-bold uppercase">選擇發包項目</label>
+                                 <span className="text-xs text-slate-400 font-mono">已選 {sub.itemIds.length} 項</span>
+                               </div>
+                               <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
+                                 {(() => {
+                                   const allResources = getProjectResources(project);
+                                   return CATEGORIES.map(cat => {
+                                     const catItems = allResources.filter(i => i.category === cat.id);
+                                     if (catItems.length === 0) return null;
+                                     return (
+                                       <div key={cat.id}>
+                                         <div className={`px-3 py-1.5 text-xs font-bold ${cat.color} ${cat.bg}`}>{cat.label}</div>
+                                         {catItems.map(item => (
+                                           <label
+                                             key={item.id}
+                                             className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-amber-50/50 transition-colors ${sub.itemIds.includes(item.id) ? 'bg-amber-50' : ''}`}
+                                           >
+                                             <input
+                                               type="checkbox"
+                                               checked={sub.itemIds.includes(item.id)}
+                                               onChange={() => toggleSubcontractItem(sub.id, item.id)}
+                                               className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+                                             />
+                                             <div className="flex-1 min-w-0">
+                                               <div className="text-sm text-slate-700 font-medium truncate">{item.name || '未命名項目'}</div>
+                                               {item.note && (
+                                                 <div className="text-[11px] text-slate-400 truncate">{item.note}</div>
+                                               )}
+                                             </div>
+                                             <span className="text-xs text-slate-400 font-mono shrink-0">{item.quantity} {item.unit}</span>
+                                           </label>
+                                         ))}
+                                       </div>
+                                     );
+                                   });
+                                 })()}
+                               </div>
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     ))
+                   )}
+                 </div>
+               )}
+             </div>
+           );
+         })()}
 
         <div className="h-10"></div>
       </div>

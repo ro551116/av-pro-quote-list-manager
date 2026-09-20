@@ -484,7 +484,7 @@ const App: React.FC = () => {
           <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">
             AV Pro <span className="text-primary-600">Manager</span>
           </h1>
-          <p className="text-slate-500 text-sm mt-1">專業器材租賃與報價系統</p>
+          <p className="text-slate-500 text-sm mt-1">活動器材報價與清單管理</p>
         </div>
 
         <div className="flex flex-col lg:flex-row lg:items-center gap-3 w-full lg:w-auto">

@@ -4,6 +4,7 @@ import type { EquipmentItem, Project, StageItem, WorkStage } from '../types';
 import {
   calculateProject, calcRentalPeriod, calcWorkStage, cloneStagePricing,
   convertToStagePricing, createStagePricing, getProjectResources,
+  assignEquipmentToStage, deleteScheduleRow, getScheduleRows, updateScheduleStage,
 } from '../utils/helpers';
 
 const equipment = (id: string, price: number, costPrice = 0): EquipmentItem => ({
@@ -124,4 +125,295 @@ test('copied quote prices use remapped equipment selections and independently ed
   assert.equal(calculateProject(original).costSubtotal, 22000);
   assert.equal(calculateProject(copy).subtotal, 12100);
   assert.equal(calculateProject(copy).costSubtotal, 2080);
+});
+
+test('schedule row totals match calculateProject across modes with orphan visibility, fractional amounts and source immutability', () => {
+  const quote = project();
+  quote.items = [
+    { ...equipment('speaker', 123.5, 45.25), quantity: 2 },
+    { ...equipment('cable', 50, 10), quantity: 3 },
+  ];
+  quote.pricing = createStagePricing();
+  const eventStageId = quote.pricing.stages[1].id;
+
+  // 1. Itemized mode with valid stage link
+  quote.pricing.rental = {
+    mode: 'itemized',
+    fixedAmount: 0,
+    periods: [],
+    stageId: eventStageId,
+  };
+  const before1 = structuredClone(quote);
+  const rows1 = getScheduleRows(quote);
+  assert.deepEqual(quote, before1, 'getScheduleRows must not mutate input');
+  const expected1 = calculateProject(quote).subtotal;
+  const sum1 = rows1.reduce((s, r) => s + r.total, 0);
+  assert.equal(sum1, expected1);
+  const eventRow1 = rows1.find(r => r.key === `stage:${eventStageId}`);
+  assert.equal(eventRow1?.wholeEquipment, true);
+  assert.equal(eventRow1?.equipmentSubtotal, 123.5 * 2 + 50 * 3);
+  assert.equal(rows1.some(r => r.key === 'whole-equipment'), false);
+
+  // 2. Itemized mode with invalid / missing stage link shows orphan whole-equipment
+  quote.pricing.rental.stageId = 'nonexistent-stage';
+  const rows2 = getScheduleRows(quote);
+  const expected2 = calculateProject(quote).subtotal;
+  const sum2 = rows2.reduce((s, r) => s + r.total, 0);
+  assert.equal(sum2, expected2);
+  const orphanWhole = rows2.find(r => r.key === 'whole-equipment');
+  assert.ok(orphanWhole);
+  assert.equal(orphanWhole.wholeEquipment, true);
+  assert.equal(orphanWhole.equipmentSubtotal, 123.5 * 2 + 50 * 3);
+  assert.equal(orphanWhole.stage, undefined);
+
+  // 3. Periods mode: assigned and orphan periods, no dormant whole fee
+  quote.pricing.rental = {
+    mode: 'periods',
+    fixedAmount: 999999, // dormant
+    periods: [
+      { id: 'p1', label: '進場期', type: 'fixed', value: 333.5, units: 2, itemIds: [], stageId: quote.pricing.stages[0].id },
+      { id: 'p2', label: '孤兒檔期', type: 'rate', value: 0.5, units: 1, itemIds: ['speaker'], stageId: undefined },
+      { id: 'p3', label: '無效檔期', type: 'fixed', value: 100, units: 1, itemIds: [], stageId: 'ghost' },
+    ],
+  };
+  const rows3 = getScheduleRows(quote);
+  const expected3 = calculateProject(quote).subtotal;
+  const sum3 = rows3.reduce((s, r) => s + r.total, 0);
+  assert.equal(sum3, expected3);
+  assert.equal(rows3.some(r => r.key === 'whole-equipment'), false);
+  const orphanP2 = rows3.find(r => r.key === 'period:p2');
+  const orphanP3 = rows3.find(r => r.key === 'period:p3');
+  assert.ok(orphanP2);
+  assert.ok(orphanP3);
+  assert.equal(orphanP2.equipmentSubtotal, Math.round((123.5 * 2) * 0.5 * 1));
+  assert.equal(orphanP3.equipmentSubtotal, 100);
+
+  // 4. Fixed mode with negative amount and stage fixed override
+  quote.pricing.rental = {
+    mode: 'fixed',
+    fixedAmount: -500.5,
+    periods: [{ id: 'dormant-p', label: '休眠', type: 'fixed', value: 10000, units: 1, itemIds: [] }],
+    stageId: quote.pricing.stages[0].id,
+  };
+  quote.pricing.stages[0].pricingMode = 'fixed';
+  quote.pricing.stages[0].fixedAmount = 2000;
+  const rows4 = getScheduleRows(quote);
+  const expected4 = calculateProject(quote).subtotal;
+  const sum4 = rows4.reduce((s, r) => s + r.total, 0);
+  assert.equal(sum4, expected4);
+  const stage0Row = rows4.find(r => r.key === `stage:${quote.pricing.stages[0].id}`);
+  assert.equal(stage0Row?.equipmentSubtotal, -500.5);
+  assert.equal(stage0Row?.workSubtotal, 2000);
+  assert.equal(stage0Row?.total, 1499.5);
+  assert.equal(rows4.some(r => r.key === 'period:dormant-p'), false);
+
+  // 5. Fixed mode with unassigned 0 fee suppresses the placeholder orphan row
+  quote.pricing.rental = {
+    mode: 'fixed',
+    fixedAmount: 0,
+    stageId: undefined,
+    periods: [],
+  };
+  const rows5 = getScheduleRows(quote);
+  assert.equal(rows5.some(r => r.key === 'whole-equipment'), false, 'unassigned fixed 0 whole fee placeholder must be suppressed');
+  const sum5 = rows5.reduce((s, r) => s + r.total, 0);
+  assert.equal(sum5, calculateProject(quote).subtotal);
+});
+
+test('linking, reassignment and updating orphan fees preserve quote and cost totals with stable resource IDs', () => {
+  const quote = project();
+  quote.pricing = createStagePricing();
+  quote.pricing.stages[0].items.push(labor('stage-labor'));
+  quote.pricing.rental = {
+    mode: 'periods',
+    fixedAmount: 0,
+    periods: [
+      { id: 'p1', label: '展期', type: 'rate', value: 1, units: 2, itemIds: ['audio'], stageId: undefined },
+    ],
+  };
+
+  const initialTotals = calculateProject(quote);
+  const initialResourceIds = getProjectResources(quote).map(r => r.id);
+  const before = structuredClone(quote);
+
+  // 1. Assign orphan period to first stage
+  const targetStageId = quote.pricing.stages[0].id;
+  const assigned = assignEquipmentToStage(quote, 'period:p1', targetStageId);
+  assert.deepEqual(quote, before, 'assignEquipmentToStage must not mutate input');
+  assert.deepEqual(calculateProject(assigned), initialTotals);
+  assert.deepEqual(getProjectResources(assigned).map(r => r.id), initialResourceIds);
+  assert.equal(assigned.pricing!.rental.periods[0].stageId, targetStageId);
+
+  // 2. Updating via old period key resolves to existing linked stage rather than duplicating
+  const updatedStage = updateScheduleStage(assigned, 'period:p1', s => ({ ...s, note: '已排定' }));
+  assert.equal(updatedStage.pricing!.stages.length, quote.pricing.stages.length, 'must not create duplicate stage');
+  assert.equal(updatedStage.pricing!.stages[0].note, '已排定');
+  assert.deepEqual(calculateProject(updatedStage), initialTotals);
+
+  // 3. Updating an orphan period creates itemized stage with zero work lines (billed exactly once)
+  const quoteWithOrphan = {
+    ...quote,
+    pricing: {
+      ...quote.pricing,
+      rental: {
+        ...quote.pricing.rental,
+        periods: [{ id: 'p2', label: '新進場', type: 'fixed' as const, value: 5000, units: 1, itemIds: [], stageId: undefined }],
+      },
+    },
+  };
+  const orphanTotals = calculateProject(quoteWithOrphan);
+  const staged = updateScheduleStage(quoteWithOrphan, 'period:p2', s => ({ ...s, note: '備註' }));
+  assert.equal(staged.pricing!.stages.length, quoteWithOrphan.pricing.stages.length + 1);
+  const newStage = staged.pricing!.stages[staged.pricing!.stages.length - 1];
+  assert.equal(newStage.items.length, 0);
+  assert.equal(newStage.pricingMode, 'itemized');
+  assert.equal(newStage.fixedAmount, 0);
+  assert.equal(staged.pricing!.rental.periods[0].stageId, newStage.id);
+  assert.deepEqual(calculateProject(staged), orphanTotals);
+
+  // 4. Assigning whole-equipment works directly from raw rental state even when fixed 0 unassigned
+  const quoteFixedZero = {
+    ...quote,
+    pricing: {
+      ...quote.pricing,
+      rental: {
+        mode: 'fixed' as const,
+        fixedAmount: 0,
+        stageId: undefined,
+        periods: [],
+      },
+    },
+  };
+  const reassignedZero = assignEquipmentToStage(quoteFixedZero, 'whole-equipment', targetStageId);
+  assert.equal(reassignedZero.pricing!.rental.stageId, targetStageId);
+  const zeroRows = getScheduleRows(reassignedZero);
+  const targetRow = zeroRows.find(r => r.key === `stage:${targetStageId}`);
+  assert.equal(targetRow?.wholeEquipment, true);
+  assert.equal(targetRow?.equipmentSubtotal, 0);
+
+  // 5. Stale or invalid keys are safe no-ops
+  const noop = updateScheduleStage(quote, 'nonexistent', s => ({ ...s, name: 'should-not-apply' }));
+  assert.deepEqual(noop, quote);
+});
+
+test('cloneStagePricing remaps whole and period owner stage IDs via independent stage map', () => {
+  const quote = project();
+  quote.pricing = createStagePricing();
+  const [s0, s1] = quote.pricing.stages;
+  s0.id = 'audio'; // Stage and equipment identifiers can occupy different namespaces.
+  quote.pricing.rental = {
+    mode: 'periods',
+    fixedAmount: 12000,
+    stageId: s0.id,
+    periods: [
+      { id: 'p0', label: '期1', type: 'fixed', value: 1000, units: 1, itemIds: ['audio'], stageId: s1.id },
+      { id: 'p1', label: '期2', type: 'fixed', value: 2000, units: 1, itemIds: ['audio'], stageId: 'unmatched' },
+    ],
+  };
+
+  const idMap = new Map([['audio', 'audio-copied']]);
+  const cloned = cloneStagePricing(quote.pricing, idMap);
+
+  // New stage IDs
+  const clonedStage0Id = cloned.stages[0].id;
+  const clonedStage1Id = cloned.stages[1].id;
+  assert.notEqual(clonedStage0Id, s0.id);
+  assert.notEqual(clonedStage1Id, s1.id);
+
+  // Whole rental stageId remapped to new stage 0
+  assert.equal(cloned.rental.stageId, clonedStage0Id);
+
+  // Period 0 remapped to new stage 1
+  assert.equal(cloned.rental.periods[0].stageId, clonedStage1Id);
+  // Period 1 with unmatched owner remains undefined
+  assert.equal(cloned.rental.periods[1].stageId, undefined);
+
+  assert.deepEqual(cloned.rental.periods[0].itemIds, ['audio-copied']);
+  const copied = { ...quote, pricing: cloned, items: quote.items.map(item => ({ ...item, id: idMap.get(item.id) || item.id })) };
+  assert.deepEqual(calculateProject(copied), calculateProject(quote));
+});
+
+test('explicit deletion removes associated charges and work lines without destroying equipment cost or dormant links', () => {
+  const quote = project();
+  quote.pricing = createStagePricing();
+  const [setup, event] = quote.pricing.stages;
+  setup.items.push(labor('crew-1'));
+  quote.subcontracts = [
+    { id: 'sub-1', vendorName: '包商', vendorTaxId: '', vendorContact: '', vendorPhone: '', handoverTime: '', itemIds: ['crew-1', 'audio'] },
+  ];
+
+  // 1. In itemized mode: deleting stage owning whole fee converts whole fee to fixed 0, preserving equipment items & cost
+  quote.pricing.rental = {
+    mode: 'itemized',
+    fixedAmount: 0,
+    stageId: setup.id,
+    periods: [
+      { id: 'dormant-1', label: '備用檔期', type: 'fixed', value: 8888, units: 1, itemIds: [], stageId: setup.id },
+    ],
+  };
+  const deletedSetup = deleteScheduleRow(quote, `stage:${setup.id}`);
+  assert.equal(deletedSetup.pricing!.stages.some(s => s.id === setup.id), false);
+  // Whole fee is fixed 0 with cleared stageId, NOT falling back to itemized 8000!
+  assert.equal(deletedSetup.pricing!.rental.mode, 'fixed');
+  assert.equal(deletedSetup.pricing!.rental.fixedAmount, 0);
+  assert.equal(deletedSetup.pricing!.rental.stageId, undefined);
+  // Unassigned fixed 0 whole fee row is suppressed from schedule rows
+  const rowsAfterDelete = getScheduleRows(deletedSetup);
+  assert.equal(rowsAfterDelete.some(r => r.key === 'whole-equipment'), false);
+  // Actual equipment items and costs survive untouched
+  assert.equal(deletedSetup.items.length, quote.items.length);
+  assert.equal(deletedSetup.items[0].costPrice, 2000);
+  assert.equal(calculateProject(deletedSetup).costSubtotal, 2000);
+  // Dormant period amount is preserved, but dangling stageId link is cleared
+  assert.equal(deletedSetup.pricing!.rental.periods.length, 1);
+  assert.equal(deletedSetup.pricing!.rental.periods[0].value, 8888);
+  assert.equal(deletedSetup.pricing!.rental.periods[0].stageId, undefined);
+  // Subcontract reference to deleted work line is removed, equipment item remains
+  assert.deepEqual(deletedSetup.subcontracts![0].itemIds, ['audio']);
+
+  // 2. In periods mode: deleting stage removes active linked period
+  const periodsQuote = {
+    ...quote,
+    pricing: {
+      ...quote.pricing,
+      rental: {
+        mode: 'periods' as const,
+        fixedAmount: 0,
+        periods: [
+          { id: 'p-setup', label: '進場', type: 'fixed' as const, value: 3000, units: 1, itemIds: [], stageId: setup.id },
+          { id: 'p-event', label: '活動', type: 'fixed' as const, value: 5000, units: 1, itemIds: [], stageId: event.id },
+        ],
+      },
+    },
+  };
+  const deletedPeriodStage = deleteScheduleRow(periodsQuote, `stage:${setup.id}`);
+  assert.equal(deletedPeriodStage.pricing!.rental.periods.length, 1);
+  assert.equal(deletedPeriodStage.pricing!.rental.periods[0].id, 'p-event');
+
+  // 3. Orphan row deletions
+  const orphanQuote = {
+    ...quote,
+    pricing: {
+      ...quote.pricing,
+      rental: {
+        mode: 'fixed' as const,
+        fixedAmount: 6000,
+        stageId: undefined,
+        periods: [
+          { id: 'p-orphan', label: '孤兒', type: 'fixed' as const, value: 1000, units: 1, itemIds: [], stageId: undefined },
+        ],
+      },
+    },
+  };
+  assert.equal(deleteScheduleRow(orphanQuote, 'period:p-orphan'), orphanQuote, 'Dormant fees are not active rows');
+  assert.equal(assignEquipmentToStage(orphanQuote, 'period:p-orphan', event.id), orphanQuote);
+  assert.equal(updateScheduleStage(orphanQuote, 'period:p-orphan', stage => ({ ...stage, name: '錯誤搬移' })), orphanQuote);
+  const activeOrphanQuote = { ...orphanQuote, pricing: { ...orphanQuote.pricing, rental: { ...orphanQuote.pricing.rental, mode: 'periods' as const } } };
+  const deletedOrphanPeriod = deleteScheduleRow(activeOrphanQuote, 'period:p-orphan');
+  assert.equal(deletedOrphanPeriod.pricing!.rental.periods.length, 0);
+
+  const deletedOrphanWhole = deleteScheduleRow(orphanQuote, 'whole-equipment');
+  assert.equal(deletedOrphanWhole.pricing!.rental.mode, 'fixed');
+  assert.equal(deletedOrphanWhole.pricing!.rental.fixedAmount, 0);
+  assert.equal(deletedOrphanWhole.pricing!.rental.stageId, undefined);
 });

@@ -14,10 +14,11 @@ import {
   formatQuoteTerms,
   calculateProject,
   getProjectResources,
+  getScheduleRows,
 } from '../utils/helpers';
 import {
   StagePricingQuoteEquipmentTable,
-  StagePricingQuoteStagesTable,
+  StagePricingQuoteScheduleTable,
   StagePricingCompactTable,
   StagePricingCostTable,
 } from './StagePricingPrint';
@@ -80,15 +81,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const eventDateText = formatDateRange(project.date, project.eventEndDate);
   const eventDateTimeText = [eventDateText, project.activityTime].filter(Boolean).join(' ');
   const periodSummary = project.pricing
-    ? project.pricing.rental.mode === 'fixed'
-      ? (project.pricing.rental.startDate && project.pricing.rental.endDate
-          ? formatDateRange(project.pricing.rental.startDate, project.pricing.rental.endDate)
-          : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天 (整檔固定)`))
-      : project.pricing.rental.mode === 'periods'
-        ? (project.pricing.rental.periods.length > 0
-            ? project.pricing.rental.periods.map(p => p.label).filter(Boolean).join(' + ')
-            : eventDateText)
-        : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`)
+    ? getScheduleRows(project).map(row => row.name).filter(Boolean).join(' / ')
     : displayCharges.length > 0
       ? displayCharges.map(formatPeriodChargeLabel).filter(Boolean).join(' + ')
       : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`);
@@ -425,7 +418,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
               {project.pricing ? (
                 <StagePricingCompactTable
                   project={project}
-                  rentalSubtotal={rentalSubtotal}
                 />
               ) : (
                 <div className="w-full mb-2">
@@ -717,10 +709,9 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                 <>
                   <StagePricingQuoteEquipmentTable
                     project={project}
-                    rentalSubtotal={rentalSubtotal}
                     nextIndex={() => ++itemCounter}
                   />
-                  <StagePricingQuoteStagesTable
+                  <StagePricingQuoteScheduleTable
                     project={project}
                     nextIndex={() => ++itemCounter}
                   />

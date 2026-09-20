@@ -38,6 +38,7 @@ export interface EquipmentItem {
 export interface RentalPeriod extends PeriodCharge {
   itemIds: string[];
   units: number; // Explicit billable days/times; date ranges never multiply charges implicitly.
+  stageId?: string;
 }
 
 export interface EquipmentRental {
@@ -46,6 +47,7 @@ export interface EquipmentRental {
   startDate?: string;
   endDate?: string;
   periods: RentalPeriod[];
+  stageId?: string;
 }
 
 export interface StageItem {
