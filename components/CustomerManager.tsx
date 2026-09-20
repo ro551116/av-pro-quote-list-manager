@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Archive, ArrowLeft, Copy, Edit, FilePlus2, History, Plus, Save, Search, Trash2, X } from 'lucide-react';
 import { Customer, Project } from '../types';
-import { calcBaseSubtotal, calcGrandSubtotal, formatCurrency, formatDateRange, generateId } from '../utils/helpers';
+import { calculateProject, formatCurrency, formatDateRange, generateId } from '../utils/helpers';
 
 interface CustomerManagerProps {
   customers: Customer[];
@@ -80,12 +80,6 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
         (!!customerName && project.client.trim().toLowerCase() === customerName)
       )
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  };
-
-  const getProjectTotal = (project: Project) => {
-    const baseSubtotal = calcBaseSubtotal(project.items || []);
-    const charges = project.periodCharges || [];
-    return charges.length > 0 ? calcGrandSubtotal(baseSubtotal, charges) : baseSubtotal;
   };
 
   return (
@@ -188,7 +182,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-[11px] text-slate-400">{formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}</div>
+                                <div className="text-[11px] text-slate-400">{formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項器材 · {formatCurrency(calculateProject(project).subtotal)}</div>
                               </div>
                               <button
                                 onClick={() => onCreateProject(customer, project)}
@@ -273,7 +267,7 @@ export const CustomerManager: React.FC<CustomerManagerProps> = ({
                           )}
                         </div>
                         <div className="text-xs text-slate-400 mt-0.5">
-                          {formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項 · {formatCurrency(getProjectTotal(project))}
+                          {formatDateRange(project.date, project.eventEndDate)} · {project.items.length} 項器材 · {formatCurrency(calculateProject(project).subtotal)}
                         </div>
                       </div>
                       <button

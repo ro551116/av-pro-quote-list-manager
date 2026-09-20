@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Project, ViewMode, Subcontract, PeriodCharge, SalesPerson, Customer } from './types';
 import { INITIAL_ITEMS } from './constants';
-import { generateId } from './utils/helpers';
+import { cloneStagePricing, createStagePricing, generateId } from './utils/helpers';
 
 /** Migrate old period (number of days) to periodCharges array */
 const migratePeriodToCharges = (period: number): PeriodCharge[] => {
@@ -115,7 +115,7 @@ const App: React.FC = () => {
             moveInDate: p.moveInDate || `${p.date} 09:00`,
             moveOutDate: p.moveOutDate || `${p.date} 18:00`,
             period: p.period ?? 1,
-            periodCharges: p.periodCharges || migratePeriodToCharges(p.period ?? 1),
+            periodCharges: p.pricing ? undefined : (p.periodCharges || migratePeriodToCharges(p.period ?? 1)),
             subcontracts: p.subcontracts || [],
             validDays: Number.isFinite(Number(p.validDays)) && Number(p.validDays) > 0 ? Math.floor(Number(p.validDays)) : 15,
             validUntil: typeof p.validUntil === 'string' ? p.validUntil : '',
@@ -169,6 +169,9 @@ const App: React.FC = () => {
           };
         })
       : INITIAL_ITEMS.map(i => ({ ...i, id: generateId(), costPrice: 0 }));
+    const pricing = sourceProject
+      ? (sourceProject.pricing ? cloneStagePricing(sourceProject.pricing, idMap) : undefined)
+      : createStagePricing();
 
     return {
       id: generateId(),
@@ -184,10 +187,11 @@ const App: React.FC = () => {
       taxId: customer?.taxId || '',
       moveInDate: `${today} 09:00`,
       moveOutDate: `${today} 18:00`,
-      period: sourceProject?.period ?? 1,
-      periodCharges: sourceProject?.periodCharges
+      period: pricing ? undefined : (sourceProject?.period ?? 1),
+      periodCharges: pricing ? undefined : (sourceProject?.periodCharges
         ? sourceProject.periodCharges.map(charge => ({ ...charge, id: generateId() }))
-        : [{ id: generateId(), label: '活動日', type: 'rate' as const, value: 1.0 }],
+        : [{ id: generateId(), label: '活動日', type: 'rate' as const, value: 1.0 }]),
+      pricing,
       items,
       subcontracts: sourceProject?.subcontracts?.map(subcontract => ({
         ...subcontract,

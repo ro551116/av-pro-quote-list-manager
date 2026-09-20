@@ -1,7 +1,26 @@
 import React, { useState } from 'react';
-import { Project, Category, Subcontract, SalesPerson } from '../types';
+import type { Project, Category, Subcontract, SalesPerson } from '../types';
 import { CATEGORIES } from '../constants';
-import { formatCurrency, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatDateRange, formatPeriodChargeLabel, formatQuoteTerms } from '../utils/helpers';
+import {
+  formatCurrency,
+  calcClientTotal,
+  calcCostTotal,
+  calcProfitMargin,
+  calcBaseSubtotal,
+  calcChargeAmount,
+  calcGrandSubtotal,
+  formatDateRange,
+  formatPeriodChargeLabel,
+  formatQuoteTerms,
+  calculateProject,
+  getProjectResources,
+} from '../utils/helpers';
+import {
+  StagePricingQuoteEquipmentTable,
+  StagePricingQuoteStagesTable,
+  StagePricingCompactTable,
+  StagePricingCostTable,
+} from './StagePricingPrint';
 import { ArrowLeft, FileDown, ArrowRightLeft, Loader2 } from 'lucide-react';
 
 // Declare html2pdf for TypeScript
@@ -26,11 +45,29 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const isCost = type === 'cost';
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // Project-wide calculation (single source of truth for both legacy and stage pricing)
+  const projectTotals = calculateProject(project);
+  const {
+    rentalSubtotal,
+    stagesSubtotal,
+    subtotal,
+    costSubtotal: calculatedCostSubtotal,
+    tax,
+    total,
+    costTax: calculatedCostTax,
+    costTotal: calculatedCostTotal,
+  } = projectTotals;
+
+  // All resources including stage items (used for list and subcontract selection)
+  const allResources = getProjectResources(project);
+
   const visibleItems = isSubcontract
-    ? project.items.filter(item => subcontract?.itemIds.includes(item.id))
-    : isQuote
-      ? project.items.filter(item => !item.internalOnly)
-      : project.items;
+    ? allResources.filter(item => subcontract?.itemIds.includes(item.id))
+    : isList
+      ? allResources
+      : isQuote
+        ? project.items.filter(item => !item.internalOnly)
+        : project.items;
 
   const charges = project.periodCharges || [];
   // 一天活動（只有一筆「活動日 100%」）不顯示該列，但金額計算保持不變
@@ -42,36 +79,45 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const baseSubtotal = calcBaseSubtotal(project.items);
   const eventDateText = formatDateRange(project.date, project.eventEndDate);
   const eventDateTimeText = [eventDateText, project.activityTime].filter(Boolean).join(' ');
-  const periodSummary = displayCharges.length > 0
-    ? displayCharges.map(formatPeriodChargeLabel).filter(Boolean).join(' + ')
-    : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`);
+  const periodSummary = project.pricing
+    ? project.pricing.rental.mode === 'fixed'
+      ? (project.pricing.rental.startDate && project.pricing.rental.endDate
+          ? formatDateRange(project.pricing.rental.startDate, project.pricing.rental.endDate)
+          : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天 (整檔固定)`))
+      : project.pricing.rental.mode === 'periods'
+        ? (project.pricing.rental.periods.length > 0
+            ? project.pricing.rental.periods.map(p => p.label).filter(Boolean).join(' + ')
+            : eventDateText)
+        : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`)
+    : displayCharges.length > 0
+      ? displayCharges.map(formatPeriodChargeLabel).filter(Boolean).join(' + ')
+      : (project.eventEndDate && project.eventEndDate !== project.date ? eventDateText : `${project.period || 1} 天`);
 
   // 精簡模式：只對報價單生效。每個類別合併成一列，價格為該類別客報合計。
   const compactMode = isQuote && !!project.compactQuote;
-  const compactCategoryRows = compactMode
+  const compactCategoryRows = compactMode && !project.pricing
     ? CATEGORIES
         .map(cat => {
           const items = visibleItems.filter(i => i.category === cat.id);
           if (items.length === 0) return null;
-          const total = items.reduce((s, i) => s + calcClientTotal(i), 0);
-          return { cat, total };
+          const catTotal = items.reduce((s, i) => s + calcClientTotal(i), 0);
+          return { cat, total: catTotal };
         })
         .filter((x): x is { cat: typeof CATEGORIES[0]; total: number } => x !== null)
     : [];
 
-  const subtotal = charges.length > 0
-    ? calcGrandSubtotal(baseSubtotal, charges)
-    : baseSubtotal;
-  const tax = subtotal * project.taxRate;
-  const total = subtotal + tax;
+  const subcontractCostSubtotal = isSubcontract
+    ? visibleItems.reduce((acc, item) => acc + calcCostTotal(item), 0)
+    : 0;
+  const subcontractCostTax = Math.round(subcontractCostSubtotal * project.taxRate);
+  const subcontractCostTotal = subcontractCostSubtotal + subcontractCostTax;
 
-  const costSubtotal = visibleItems.reduce((acc, item) => acc + calcCostTotal(item), 0);
-  const costTax = Math.round(costSubtotal * project.taxRate);
-  const costTotal = costSubtotal + costTax;
+  const costSubtotal = isSubcontract ? subcontractCostSubtotal : calculatedCostSubtotal;
+  const costTax = isSubcontract ? subcontractCostTax : calculatedCostTax;
+  const costTotal = isSubcontract ? subcontractCostTotal : calculatedCostTotal;
 
   const grossProfit = subtotal - costSubtotal;
   const grossProfitRate = subtotal > 0 ? (grossProfit / subtotal) * 100 : 0;
-
   const typeLabel = isQuote ? '報價單' : isList ? '器材清單' : isCost ? '成本利潤表' : '發包單';
   const nextLabel = isQuote ? '器材清單' : isList ? '報價單' : '';
 
@@ -375,53 +421,60 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                 </div>
               </div>
 
-              {/* Compact table: 類別合併為單列 + periodCharges 合併在同表 */}
-              <div className="w-full mb-2">
-                <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-                  <thead className="bg-white text-center">
-                    <tr>
-                      <th className="border border-black py-1 w-[8%] font-medium">編號</th>
-                      <th className="border border-black py-1 w-[30%] font-medium">品項</th>
-                      <th className="border border-black py-1 w-[14%] font-medium">內容</th>
-                      <th className="border border-black py-1 w-[20%] font-medium">價格</th>
-                      <th className="border border-black py-1 w-[28%] font-medium">備註</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {compactCategoryRows.map((row, idx) => (
-                      <tr key={row.cat.id} className="break-inside-avoid">
-                        <td className="border border-black py-2 text-center align-middle font-mono">{idx + 1}</td>
-                        <td className="border border-black py-2 px-2 align-middle font-bold">{row.cat.label}</td>
-                        {idx === 0 && (
-                          <td
-                            className="border border-black py-2 px-2 text-center align-middle text-gray-600"
-                            rowSpan={compactCategoryRows.length}
-                          >
-                            如附件
+              {/* Compact table: New stage pricing vs Legacy category table */}
+              {project.pricing ? (
+                <StagePricingCompactTable
+                  project={project}
+                  rentalSubtotal={rentalSubtotal}
+                />
+              ) : (
+                <div className="w-full mb-2">
+                  <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+                    <thead className="bg-white text-center">
+                      <tr>
+                        <th className="border border-black py-1 w-[8%] font-medium">編號</th>
+                        <th className="border border-black py-1 w-[30%] font-medium">品項</th>
+                        <th className="border border-black py-1 w-[14%] font-medium">內容</th>
+                        <th className="border border-black py-1 w-[20%] font-medium">價格</th>
+                        <th className="border border-black py-1 w-[28%] font-medium">備註</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {compactCategoryRows.map((row, idx) => (
+                        <tr key={row.cat.id} className="break-inside-avoid">
+                          <td className="border border-black py-2 text-center align-middle font-mono">{idx + 1}</td>
+                          <td className="border border-black py-2 px-2 align-middle font-bold">{row.cat.label}</td>
+                          {idx === 0 && (
+                            <td
+                              className="border border-black py-2 px-2 text-center align-middle text-gray-600"
+                              rowSpan={compactCategoryRows.length}
+                            >
+                              如附件
+                            </td>
+                          )}
+                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">{formatCurrency(row.total)}</td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                        </tr>
+                      ))}
+                      {displayCharges.map((charge, i) => (
+                        <tr key={charge.id} className="break-inside-avoid">
+                          <td className="border border-black py-2 text-center align-middle font-mono">
+                            {compactCategoryRows.length + i + 1}
                           </td>
-                        )}
-                        <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">{formatCurrency(row.total)}</td>
-                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                      </tr>
-                    ))}
-                    {displayCharges.map((charge, i) => (
-                      <tr key={charge.id} className="break-inside-avoid">
-                        <td className="border border-black py-2 text-center align-middle font-mono">
-                          {compactCategoryRows.length + i + 1}
-                        </td>
-                        <td className="border border-black py-2 px-2 align-middle font-bold">
-                          {formatPeriodChargeLabel(charge)}
-                        </td>
-                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                        <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
-                          {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
-                        </td>
-                        <td className="border border-black py-2 px-2 align-middle text-xs"></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          <td className="border border-black py-2 px-2 align-middle font-bold">
+                            {formatPeriodChargeLabel(charge)}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                          <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
+                            {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
+                          </td>
+                          <td className="border border-black py-2 px-2 align-middle text-xs"></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Totals + 大小章 */}
               <div className="break-inside-avoid mt-auto">
@@ -659,169 +712,195 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   </div>
               </div>}
 
-              {/* --- Table Sections (standard per-category rendering, always full) --- */}
-              <div className="w-full mb-2">
-                {CATEGORIES.map((cat) => {
-                  const catItems = visibleItems.filter(i => i.category === cat.id);
-                  if (catItems.length === 0) return null;
+              {/* --- Table Sections (Stage Pricing vs Legacy) --- */}
+              {isQuote && project.pricing ? (
+                <>
+                  <StagePricingQuoteEquipmentTable
+                    project={project}
+                    rentalSubtotal={rentalSubtotal}
+                    nextIndex={() => ++itemCounter}
+                  />
+                  <StagePricingQuoteStagesTable
+                    project={project}
+                    nextIndex={() => ++itemCounter}
+                  />
+                </>
+              ) : isCost && project.pricing ? (
+                <StagePricingCostTable
+                  project={project}
+                  rentalSubtotal={rentalSubtotal}
+                  stagesSubtotal={stagesSubtotal}
+                  subtotal={subtotal}
+                  costSubtotal={costSubtotal}
+                  tax={tax}
+                  total={total}
+                  costTax={costTax}
+                  costTotal={costTotal}
+                />
+              ) : (
+                <div className="w-full mb-2">
+                  {CATEGORIES.map((cat) => {
+                    const catItems = visibleItems.filter(i => i.category === cat.id);
+                    if (catItems.length === 0) return null;
 
-                  return (
-                    <div key={cat.id} className="mb-4">
-                      <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
-                          {cat.label}
-                      </div>
+                    return (
+                      <div key={cat.id} className="mb-4">
+                        <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
+                            {cat.label}
+                        </div>
 
-                      <table className="w-full text-[13px] table-fixed border-collapse border border-black">
-                          <thead className="bg-white text-center">
-                              <tr>
-                                  <th className="border border-black py-1 w-[5%] font-medium">編號</th>
-                                  {isQuote && (
-                                    <>
-                                        <th className="border border-black py-1 w-[28%] font-medium">品名</th>
-                                        <th className="border border-black py-1 w-[8%] font-medium">數量</th>
-                                        <th className="border border-black py-1 w-[8%] font-medium">單位</th>
-                                        <th className="border border-black py-1 w-[13%] font-medium">單價</th>
-                                        <th className="border border-black py-1 w-[15%] font-medium">金額</th>
-                                        <th className="border border-black py-1 w-[23%] font-medium">備註</th>
-                                    </>
-                                  )}
-                                  {isList && (
-                                    <>
-                                        <th className="border border-black py-1 w-[38%] font-medium">品項 / 詳細內容</th>
-                                        <th className="border border-black py-1 w-[10%] font-medium">數量</th>
-                                        <th className="border border-black py-1 w-[8%] font-medium text-xs">出庫</th>
-                                        <th className="border border-black py-1 w-[8%] font-medium text-xs">回庫</th>
-                                        <th className="border border-black py-1 w-[28%] font-medium">備註</th>
-                                    </>
-                                  )}
-                                  {isSubcontract && (
-                                    <>
-                                        <th className="border border-black py-1 w-[35%] font-medium">品名</th>
-                                        <th className="border border-black py-1 w-[10%] font-medium">數量</th>
-                                        <th className="border border-black py-1 w-[10%] font-medium">單位</th>
-                                        <th className="border border-black py-1 w-[40%] font-medium">備註</th>
-                                    </>
-                                  )}
-                                  {isCost && (
-                                    <>
-                                        <th className="border border-black py-1 w-[20%] font-medium">品名</th>
-                                        <th className="border border-black py-1 w-[7%] font-medium">數量</th>
-                                        <th className="border border-black py-1 w-[10%] font-medium">客報單價</th>
-                                        <th className="border border-black py-1 w-[12%] font-medium">客報金額</th>
-                                        <th className="border border-black py-1 w-[10%] font-medium">成本單價</th>
-                                        <th className="border border-black py-1 w-[12%] font-medium">成本金額</th>
-                                        <th className="border border-black py-1 w-[12%] font-medium">利潤</th>
-                                        <th className="border border-black py-1 w-[7%] font-medium">利潤率</th>
-                                    </>
-                                  )}
-                              </tr>
-                          </thead>
-                          <tbody>
-                              {catItems.map((item) => {
-                                itemCounter++;
-                                return (
-                                  <tr key={item.id} className="break-inside-avoid">
-                                      <td className="border border-black py-2 text-center align-top font-mono">
-                                          {itemCounter}
-                                      </td>
+                        <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+                            <thead className="bg-white text-center">
+                                <tr>
+                                    <th className="border border-black py-1 w-[5%] font-medium">編號</th>
+                                    {isQuote && (
+                                      <>
+                                          <th className="border border-black py-1 w-[28%] font-medium">品名</th>
+                                          <th className="border border-black py-1 w-[8%] font-medium">數量</th>
+                                          <th className="border border-black py-1 w-[8%] font-medium">單位</th>
+                                          <th className="border border-black py-1 w-[13%] font-medium">單價</th>
+                                          <th className="border border-black py-1 w-[15%] font-medium">金額</th>
+                                          <th className="border border-black py-1 w-[23%] font-medium">備註</th>
+                                      </>
+                                    )}
+                                    {isList && (
+                                      <>
+                                          <th className="border border-black py-1 w-[38%] font-medium">品項 / 詳細內容</th>
+                                          <th className="border border-black py-1 w-[10%] font-medium">數量</th>
+                                          <th className="border border-black py-1 w-[8%] font-medium text-xs">出庫</th>
+                                          <th className="border border-black py-1 w-[8%] font-medium text-xs">回庫</th>
+                                          <th className="border border-black py-1 w-[28%] font-medium">備註</th>
+                                      </>
+                                    )}
+                                    {isSubcontract && (
+                                      <>
+                                          <th className="border border-black py-1 w-[35%] font-medium">品名</th>
+                                          <th className="border border-black py-1 w-[10%] font-medium">數量</th>
+                                          <th className="border border-black py-1 w-[10%] font-medium">單位</th>
+                                          <th className="border border-black py-1 w-[40%] font-medium">備註</th>
+                                      </>
+                                    )}
+                                    {isCost && (
+                                      <>
+                                          <th className="border border-black py-1 w-[20%] font-medium">品名</th>
+                                          <th className="border border-black py-1 w-[7%] font-medium">數量</th>
+                                          <th className="border border-black py-1 w-[10%] font-medium">客報單價</th>
+                                          <th className="border border-black py-1 w-[12%] font-medium">客報金額</th>
+                                          <th className="border border-black py-1 w-[10%] font-medium">成本單價</th>
+                                          <th className="border border-black py-1 w-[12%] font-medium">成本金額</th>
+                                          <th className="border border-black py-1 w-[12%] font-medium">利潤</th>
+                                          <th className="border border-black py-1 w-[7%] font-medium">利潤率</th>
+                                      </>
+                                    )}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {catItems.map((item) => {
+                                  itemCounter++;
+                                  return (
+                                    <tr key={item.id} className="break-inside-avoid">
+                                        <td className="border border-black py-2 text-center align-top font-mono">
+                                            {itemCounter}
+                                        </td>
 
-                                      {isQuote && (
-                                        <>
-                                            <td className="border border-black py-2 px-2 align-top font-bold">
-                                                {item.name}
-                                                {item.subItems && item.subItems.length > 0 && (
-                                                    <div className="text-gray-500 text-xs mt-1 font-normal">如附件</div>
-                                                )}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-center align-top">
-                                                {item.quantity}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-center align-top">
-                                                {item.unit}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">
-                                                {formatCurrency(item.price)}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">
-                                                {formatCurrency(calcClientTotal(item))}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 align-top text-xs">
-                                                {item.note}
-                                            </td>
-                                        </>
-                                      )}
-                                      {isList && (
-                                        <>
-                                            <td className="border border-black py-2 px-2 align-top">
-                                                <div className="font-bold text-sm">{item.name}</div>
-                                                {item.subItems && item.subItems.length > 0 && (
-                                                    <ul className="list-disc list-inside text-xs text-slate-700 mt-1 leading-tight">
-                                                        {item.subItems.map((sub, i) => (
-                                                            <li key={i}>{sub}</li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-center align-top font-bold">
-                                                {item.quantity} {item.unit}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 align-top bg-white">
-                                                <div className="w-5 h-5 border border-black mx-auto mt-1 bg-white"></div>
-                                            </td>
-                                            <td className="border border-black py-2 px-2 align-top bg-white">
-                                                <div className="w-5 h-5 border border-black mx-auto mt-1 bg-white"></div>
-                                            </td>
-                                            <td className="border border-black py-2 px-2 align-top text-xs">
-                                                {item.note}
-                                            </td>
-                                        </>
-                                      )}
-                                      {isSubcontract && (
-                                        <>
-                                            <td className="border border-black py-2 px-2 align-top font-bold">
-                                                {item.name}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-center align-top">
-                                                {item.quantity}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 text-center align-top">
-                                                {item.unit}
-                                            </td>
-                                            <td className="border border-black py-2 px-2 align-top text-xs">
-                                                {item.note}
-                                            </td>
-                                        </>
-                                      )}
-                                      {isCost && (() => {
-                                        const clientTotal = calcClientTotal(item);
-                                        const costTotal = calcCostTotal(item);
-                                        const profit = clientTotal - costTotal;
-                                        const margin = calcProfitMargin(item);
-                                        return (
+                                        {isQuote && (
                                           <>
-                                            <td className="border border-black py-2 px-2 align-top font-bold">{item.name}</td>
-                                            <td className="border border-black py-2 px-2 text-center align-top">{item.quantity}{item.unit}</td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.price)}</td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(clientTotal)}</td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.costPrice || 0)}</td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(costTotal)}</td>
-                                            <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">{formatCurrency(profit)}</td>
-                                            <td className={`border border-black py-2 px-2 text-center align-top font-bold ${margin >= 30 ? 'text-emerald-700' : margin >= 10 ? 'text-amber-700' : 'text-red-600'}`}>{margin.toFixed(0)}%</td>
+                                              <td className="border border-black py-2 px-2 align-top font-bold">
+                                                  {item.name}
+                                                  {item.subItems && item.subItems.length > 0 && (
+                                                      <div className="text-gray-500 text-xs mt-1 font-normal">如附件</div>
+                                                  )}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-center align-top">
+                                                  {item.quantity}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-center align-top">
+                                                  {item.unit}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono">
+                                                  {formatCurrency(item.price)}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">
+                                                  {formatCurrency(calcClientTotal(item))}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 align-top text-xs">
+                                                  {item.note}
+                                              </td>
                                           </>
-                                        );
-                                      })()}
-                                  </tr>
-                                );
-                              })}
-                          </tbody>
-                      </table>
-                    </div>
-                  );
-                })}
-              </div>
+                                        )}
+                                        {isList && (
+                                          <>
+                                              <td className="border border-black py-2 px-2 align-top">
+                                                  <div className="font-bold text-sm">{item.name}</div>
+                                                  {item.subItems && item.subItems.length > 0 && (
+                                                      <ul className="list-disc list-inside text-xs text-slate-700 mt-1 leading-tight">
+                                                          {item.subItems.map((sub, i) => (
+                                                              <li key={i}>{sub}</li>
+                                                          ))}
+                                                      </ul>
+                                                  )}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-center align-top font-bold">
+                                                  {item.quantity} {item.unit}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 align-top bg-white">
+                                                  <div className="w-5 h-5 border border-black mx-auto mt-1 bg-white"></div>
+                                              </td>
+                                              <td className="border border-black py-2 px-2 align-top bg-white">
+                                                  <div className="w-5 h-5 border border-black mx-auto mt-1 bg-white"></div>
+                                              </td>
+                                              <td className="border border-black py-2 px-2 align-top text-xs">
+                                                  {item.note}
+                                              </td>
+                                          </>
+                                        )}
+                                        {isSubcontract && (
+                                          <>
+                                              <td className="border border-black py-2 px-2 align-top font-bold">
+                                                  {item.name}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-center align-top">
+                                                  {item.quantity}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 text-center align-top">
+                                                  {item.unit}
+                                              </td>
+                                              <td className="border border-black py-2 px-2 align-top text-xs">
+                                                  {item.note}
+                                              </td>
+                                          </>
+                                        )}
+                                        {isCost && (() => {
+                                          const clientTotal = calcClientTotal(item);
+                                          const costTot = calcCostTotal(item);
+                                          const profit = clientTotal - costTot;
+                                          const margin = calcProfitMargin(item);
+                                          return (
+                                            <>
+                                              <td className="border border-black py-2 px-2 align-top font-bold">{item.name}</td>
+                                              <td className="border border-black py-2 px-2 text-center align-top">{item.quantity}{item.unit}</td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.price)}</td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(clientTotal)}</td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(item.costPrice || 0)}</td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono">{formatCurrency(costTot)}</td>
+                                              <td className="border border-black py-2 px-2 text-right align-top font-mono font-bold">{formatCurrency(profit)}</td>
+                                              <td className={`border border-black py-2 px-2 text-center align-top font-bold ${margin >= 30 ? 'text-emerald-700' : margin >= 10 ? 'text-amber-700' : 'text-red-600'}`}>{margin.toFixed(0)}%</td>
+                                            </>
+                                          );
+                                        })()}
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-              {/* --- Period Charges Section (Quote only) --- */}
-              {isQuote && displayCharges.length > 0 && (
+              {/* --- Period Charges Section (Legacy Quote only) --- */}
+              {isQuote && !project.pricing && displayCharges.length > 0 && (
                 <div className="w-full mb-2">
                   <div className="font-bold border-t-2 border-black border-l border-r bg-gray-100 px-2 py-1 text-sm print:bg-gray-100 print:print-color-adjust-exact">
                     檔期費用
@@ -835,7 +914,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                     </thead>
                     <tbody>
                       {displayCharges.map((charge) => (
-                        <tr key={charge.id} className="break-inside-avoid">
+                         <tr key={charge.id} className="break-inside-avoid">
                           <td className="border border-black py-2 px-2 font-bold">
                             {formatPeriodChargeLabel(charge)}
                           </td>
@@ -849,8 +928,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                 </div>
               )}
 
-              {/* --- Cost Summary (cost type only) --- */}
-              {isCost && (
+              {/* --- Cost Summary (Legacy Cost type only) --- */}
+              {isCost && !project.pricing && (
                 <div className="w-full mb-4">
                   <table className="w-full text-[13px] border-collapse border-2 border-black">
                     <tbody>

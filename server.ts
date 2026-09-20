@@ -5,6 +5,7 @@ import { open } from 'sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createStagePricing, generateId } from './utils/helpers';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,9 +208,8 @@ async function startServer() {
         activityTime: q.activityTime || '',
         moveInDate: q.moveInDate || '',
         moveOutDate: q.moveOutDate || '',
-        period: 1,
         items: [],
-        periodCharges: [{ id: '1', label: '活動日', type: 'rate', value: 1.0 }],
+        pricing: createStagePricing(),
         subcontracts: [],
         taxRate: 0.05,
         validDays: 15,
@@ -253,7 +253,19 @@ async function startServer() {
         internalOnly: q.internal === 'true',
         subItems: q.subItems ? q.subItems.split(',') : [],
       };
-      project.items.push(newItem);
+      if (project.pricing && newItem.category === 'crew') {
+        let stage = project.pricing.stages.find(stage => stage.name === '待分配工作');
+        if (!stage) {
+          stage = {
+            id: generateId(), name: '待分配工作', pricingMode: 'itemized',
+            fixedAmount: 0, displayMode: 'summary', items: [],
+          };
+          project.pricing.stages.push(stage);
+        }
+        stage.items.push({ ...newItem, kind: 'labor', duration: 1, durationUnit: '次' });
+      } else {
+        project.items.push(newItem);
+      }
       project.updatedAt = Date.now();
       await db.run(
         'INSERT OR REPLACE INTO projects (id, data, updatedAt) VALUES (?, ?, ?)',

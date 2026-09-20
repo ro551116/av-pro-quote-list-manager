@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson, Customer } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS, DEFAULT_VALID_DAYS, PAYMENT_METHOD_PRESETS } from '../constants';
-import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency, formatDateRange } from '../utils/helpers';
-import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send } from 'lucide-react';
+import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency, formatDateRange, calculateProject, convertToStagePricing, getProjectResources, calcWorkStage } from '../utils/helpers';
+import { Plus, Trash2, Save, ArrowLeft, X, PlusSquare, ChevronDown, ChevronUp, Package, Tag, ListChecks, Calendar, Clock, Send, Sparkles, Check } from 'lucide-react';
+import { StagePricingEditor } from './StagePricingEditor';
 
 interface ProjectEditorProps {
   project: Project;
@@ -16,6 +17,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
   const [project, setProject] = useState<Project>(() => structuredClone(initialProject));
   const [saveStatus, setSaveStatus] = useState<'saved' | 'pending' | 'saving' | 'error'>('saved');
   const [leaving, setLeaving] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
   const latestProject = useRef(project);
   const savedProject = useRef(project);
   const saveCallback = useRef(onSave);
@@ -90,7 +92,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
   const [customSubItemInput, setCustomSubItemInput] = useState<string>('');
   const [activeInputId, setActiveInputId] = useState<string | null>(null);
 
-  const handleInfoChange = (field: keyof Project, value: any) => {
+  const handleInfoChange = <K extends keyof Project>(field: K, value: Project[K]) => {
     setProject(prev => ({ ...prev, [field]: value }));
   };
 
@@ -174,7 +176,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
     setProject(prev => ({ ...prev, items: [...prev.items, newItem] }));
   };
 
-  const updateItem = (id: string, field: keyof EquipmentItem, value: any) => {
+  const updateItem = <K extends keyof EquipmentItem>(id: string, field: K, value: EquipmentItem[K]) => {
     setProject(prev => ({
       ...prev,
       items: prev.items.map(item => item.id === id ? { ...item, [field]: value } : item)
@@ -212,7 +214,21 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
   const deleteItem = (id: string) => {
     setProject(prev => ({
       ...prev,
-      items: prev.items.filter(item => item.id !== id)
+      items: prev.items.filter(item => item.id !== id),
+      pricing: prev.pricing ? {
+        ...prev.pricing,
+        rental: {
+          ...prev.pricing.rental,
+          periods: prev.pricing.rental.periods.map(period => ({
+            ...period,
+            itemIds: period.itemIds.filter(itemId => itemId !== id),
+          })),
+        },
+      } : prev.pricing,
+      subcontracts: (prev.subcontracts || []).map(sub => ({
+        ...sub,
+        itemIds: sub.itemIds.filter(itemId => itemId !== id),
+      })),
     }));
   };
 
@@ -250,7 +266,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
     setExpandedSubs(prev => new Set(prev).add(newSub.id));
   };
 
-  const updateSubcontract = (subId: string, field: keyof Subcontract, value: any) => {
+  const updateSubcontract = <K extends keyof Subcontract>(subId: string, field: K, value: Subcontract[K]) => {
     setProject(prev => ({
       ...prev,
       subcontracts: (prev.subcontracts || []).map(s => s.id === subId ? { ...s, [field]: value } : s)
@@ -296,7 +312,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
     setCharges([...charges, { id: generateId(), label: '', type: 'rate', value: 1.0 }]);
   };
 
-  const updateCharge = (id: string, field: keyof PeriodCharge, value: any) => {
+  const updateCharge = <K extends keyof PeriodCharge>(id: string, field: K, value: PeriodCharge[K]) => {
     setCharges(charges.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
@@ -321,7 +337,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden relative text-slate-900">
 
       {/* --- Item Selection Modal --- */}
-      {activeCategoryModal && (
+      {activeCategoryModal && !(project.pricing && activeCategoryModal === 'crew') && (
         <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-xl border border-slate-200 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
@@ -653,174 +669,311 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
           </div>
         </div>
 
-        {/* Period Charges Section */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-          <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
-            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <span className="w-1.5 h-6 bg-amber-500 rounded-full"></span>
-              檔期設定
-            </h3>
-            <button
-              onClick={addCharge}
-              className="flex items-center gap-1 text-sm bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg transition-colors border border-amber-200 font-bold"
-            >
-              <Plus size={14} /> 新增費用
-            </button>
-          </div>
-
-          {/* Quick Presets */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs text-slate-500 font-bold">快選:</span>
-            {DEFAULT_PERIOD_PRESETS.map((preset, idx) => (
-              <button
-                key={idx}
-                onClick={() => applyPreset(preset)}
-                className="text-xs bg-slate-100 hover:bg-primary-50 text-slate-600 hover:text-primary-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-primary-300 transition-all font-medium"
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Charge Items */}
-          <div className="space-y-3">
-            {charges.map((charge, idx) => (
-              <div key={charge.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-sm font-bold text-slate-500">{idx + 1}.</span>
-                  <span className="text-sm font-bold text-slate-700 flex-1">{charge.label || '未命名'}</span>
-                  <button
-                    onClick={() => deleteCharge(charge.id)}
-                    className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors"
-                  >
-                    <X size={16} />
-                  </button>
+        {/* Conversion Confirmation Modal */}
+        {showConvertModal && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div role="dialog" aria-modal="true" aria-label="確認轉換為階段計價" className="bg-white rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">確認轉換為階段計價架構</h3>
+                    <p className="text-xs text-slate-500">支援進場/活動/撤場獨立人力車載，租賃與工作階段清晰切分</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowConvertModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                  aria-label="關閉"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                  {/* Label */}
-                  <div className="md:col-span-3">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">標籤</label>
-                    <div className="relative">
+              {(() => {
+                const currentTotals = calculateProject(project);
+                const convertedProject = convertToStagePricing(project);
+                const convertedTotals = calculateProject(convertedProject);
+                const crewItems = project.items.filter(i => i.category === 'crew');
+
+                return (
+                  <div className="space-y-4">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 gap-4 text-center">
+                      <div>
+                        <div className="text-xs text-slate-500 font-bold uppercase mb-1">轉換前未稅總額</div>
+                        <div className="text-lg font-mono font-bold text-slate-800">
+                          {formatCurrency(currentTotals.subtotal)}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          成本 {formatCurrency(currentTotals.costSubtotal)}
+                        </div>
+                      </div>
+                      <div className="border-l border-slate-200 pl-4">
+                        <div className="text-xs text-blue-600 font-bold uppercase mb-1">轉換後未稅總額</div>
+                        <div className="text-lg font-mono font-bold text-blue-700">
+                          {formatCurrency(convertedTotals.subtotal)}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                          成本 {formatCurrency(convertedTotals.costSubtotal)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg border border-emerald-200 text-xs flex items-center gap-2">
+                      <Check size={16} className="text-emerald-600 shrink-0" />
+                      <span>
+                        <strong>總報價金額與成本完全相同（無損轉換）：</strong>
+                        未稅總計金額保持精準一致，歷史利潤與發包關聯完整保留。
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-3.5 rounded-lg border border-slate-200 leading-relaxed">
+                      <div className="font-bold text-slate-800 mb-1">分配說明：</div>
+                      <ul className="space-y-1.5 list-disc list-inside">
+                        <li>
+                          <strong>器材租賃折算：</strong> 原檔期費用折算為固定包套租金餘額，全場器材租賃僅計費一次，絕無重複累加。
+                        </li>
+                        {crewItems.length > 0 ? (
+                          <li>
+                            <strong>工作團隊人力搬移：</strong> 原專案的 {crewItems.length} 項工作團隊人員將完整保留 ID 與成本，移至「原工作團隊（請分配階段）」中，稍後可自由移至「進場」、「活動」或「撤場」階段。
+                          </li>
+                        ) : (
+                          <li>
+                            <strong>工作階段建立：</strong> 自動建立「進場」、「活動」、「撤場」三個空白階段供您自由設定。
+                          </li>
+                        )}
+                        <li>
+                          <strong>取消不變更任何資料：</strong> 若點擊「取消」，報價單將完全保留原檔期費用架構，不會進行任何背景自動轉換。
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowConvertModal(false)}
+                        className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-bold text-sm transition-colors"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProject(prev => convertToStagePricing(prev));
+                          setShowConvertModal(false);
+                        }}
+                        className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-sm transition-colors flex items-center gap-1.5"
+                      >
+                        確認轉換為階段計價
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Period Charges or Stage Pricing Section */}
+        {project.pricing ? (
+          <StagePricingEditor project={project} onChange={setProject} />
+        ) : (
+          <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-4 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-amber-500 rounded-full"></span>
+                  檔期設定
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">舊版比例/固定檔期費用架構</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConvertModal(true)}
+                  className="flex items-center gap-1.5 text-xs bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3.5 py-2 rounded-lg font-bold shadow-sm transition-all"
+                >
+                  <Sparkles size={14} /> 轉換為階段計價 (進場 / 活動 / 撤場)
+                </button>
+                <button
+                  type="button"
+                  onClick={addCharge}
+                  className="flex items-center gap-1 text-sm bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg transition-colors border border-amber-200 font-bold"
+                >
+                  <Plus size={14} /> 新增費用
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs text-slate-500 font-bold">快選:</span>
+              {DEFAULT_PERIOD_PRESETS.map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className="text-xs bg-slate-100 hover:bg-primary-50 text-slate-600 hover:text-primary-700 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-primary-300 transition-all font-medium"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Charge Items */}
+            <div className="space-y-3">
+              {charges.map((charge, idx) => (
+                <div key={charge.id} className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-bold text-slate-500">{idx + 1}.</span>
+                    <span className="text-sm font-bold text-slate-700 flex-1">{charge.label || '未命名'}</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteCharge(charge.id)}
+                      className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    {/* Label with quick picks */}
+                    <div className="md:col-span-3">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">費用名稱</label>
                       <input
                         type="text"
                         value={charge.label}
                         onChange={e => updateCharge(charge.id, 'label', e.target.value)}
-                        list={`day-labels-${charge.id}`}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                        placeholder="例如: 活動日"
+                        placeholder="例如: 活動日、進場日"
+                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm font-medium"
                       />
-                      <datalist id={`day-labels-${charge.id}`}>
-                        {DEFAULT_DAY_LABELS.map((l, i) => <option key={i} value={l} />)}
-                      </datalist>
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {DEFAULT_DAY_LABELS.slice(0, 4).map(label => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => updateCharge(charge.id, 'label', label)}
+                            className="text-[10px] bg-slate-100 hover:bg-primary-50 text-slate-500 hover:text-primary-600 px-1.5 py-0.5 rounded transition-colors"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Date Range */}
-                  <div className="md:col-span-3">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">日期</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    {/* Start Date */}
+                    <div className="md:col-span-2">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">起始日</label>
                       <input
                         type="date"
                         value={charge.startDate || ''}
                         onChange={e => updateCharge(charge.id, 'startDate', e.target.value)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                        aria-label={`${charge.label || '檔期'}開始日期`}
                       />
+                    </div>
+
+                    {/* End Date */}
+                    <div className="md:col-span-2">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">結束日</label>
                       <input
                         type="date"
-                        value={charge.endDate || charge.startDate || ''}
-                        min={charge.startDate || undefined}
+                        value={charge.endDate || ''}
                         onChange={e => updateCharge(charge.id, 'endDate', e.target.value)}
                         className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm"
-                        aria-label={`${charge.label || '檔期'}結束日期`}
                       />
                     </div>
-                  </div>
 
-                  {/* Type Toggle */}
-                  <div className="md:col-span-2">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">類型</label>
-                    <div className="flex bg-white border border-slate-300 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => updateCharge(charge.id, 'type', 'rate')}
-                        className={`flex-1 py-2 text-xs font-bold transition-colors ${charge.type === 'rate' ? 'bg-primary-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                      >
-                        百分比
-                      </button>
-                      <button
-                        onClick={() => updateCharge(charge.id, 'type', 'fixed')}
-                        className={`flex-1 py-2 text-xs font-bold transition-colors ${charge.type === 'fixed' ? 'bg-primary-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
-                      >
-                        固定金額
-                      </button>
+                    {/* Type Toggle */}
+                    <div className="md:col-span-2">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">類型</label>
+                      <div className="flex bg-white border border-slate-300 rounded-lg overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => updateCharge(charge.id, 'type', 'rate')}
+                          className={`flex-1 py-2 text-xs font-bold transition-colors ${charge.type === 'rate' ? 'bg-primary-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                          百分比
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateCharge(charge.id, 'type', 'fixed')}
+                          className={`flex-1 py-2 text-xs font-bold transition-colors ${charge.type === 'fixed' ? 'bg-primary-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                          固定金額
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Value */}
-                  <div className="md:col-span-2">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">
-                      {charge.type === 'rate' ? '比例' : '金額'}
-                    </label>
-                    <div className="flex items-center gap-1">
-                      {charge.type === 'rate' ? (
-                        <>
+                    {/* Value */}
+                    <div className="md:col-span-2">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">
+                        {charge.type === 'rate' ? '比例' : '金額'}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        {charge.type === 'rate' ? (
+                          <>
+                            <input
+                              type="number"
+                              value={Math.round(charge.value * 100)}
+                              onChange={e => updateCharge(charge.id, 'value', (parseFloat(e.target.value) || 0) / 100)}
+                              className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm font-mono"
+                              min={0}
+                            />
+                            <span className="text-slate-500 font-bold text-sm">%</span>
+                          </>
+                        ) : (
                           <input
                             type="number"
-                            value={Math.round(charge.value * 100)}
-                            onChange={e => updateCharge(charge.id, 'value', (parseFloat(e.target.value) || 0) / 100)}
+                            value={charge.value}
+                            onChange={e => updateCharge(charge.id, 'value', parseFloat(e.target.value) || 0)}
                             className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm font-mono"
                             min={0}
+                            placeholder="$0"
                           />
-                          <span className="text-slate-500 font-bold text-sm">%</span>
-                        </>
-                      ) : (
-                        <input
-                          type="number"
-                          value={charge.value}
-                          onChange={e => updateCharge(charge.id, 'value', parseFloat(e.target.value) || 0)}
-                          className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-800 focus:ring-2 focus:ring-primary-500 outline-none text-sm font-mono"
-                          min={0}
-                          placeholder="$0"
-                        />
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Estimated Amount */}
-                  <div className="md:col-span-2 text-right">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">預估</label>
-                    <div className="text-sm font-mono font-bold text-emerald-600 py-2">
-                      {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
+                    {/* Estimated Amount */}
+                    <div className="md:col-span-2 text-right">
+                      <label className="block text-slate-500 text-[10px] font-bold uppercase mb-1">預估</label>
+                      <div className="text-sm font-mono font-bold text-emerald-600 py-2">
+                        {formatCurrency(calcChargeAmount(charge, baseSubtotal))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {charges.length === 0 && (
-              <div className="text-center py-6 text-slate-400 italic border-2 border-dashed border-slate-100 rounded-lg">
-                尚無檔期費用，請點擊「新增費用」或使用快選
+              {charges.length === 0 && (
+                <div className="text-center py-6 text-slate-400 italic border-2 border-dashed border-slate-100 rounded-lg">
+                  尚無檔期費用，請點擊「新增費用」或使用快選
+                </div>
+              )}
+            </div>
+
+            {/* Summary */}
+            {charges.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center text-sm">
+                <span className="text-slate-500">
+                  器材總價 <span className="font-mono font-bold text-slate-700">{formatCurrency(baseSubtotal)}</span>
+                </span>
+                <span className="text-slate-800 font-bold">
+                  檔期合計 <span className="font-mono text-lg text-primary-600">{formatCurrency(calcGrandSubtotal(baseSubtotal, charges))}</span>
+                </span>
               </div>
             )}
           </div>
-
-          {/* Summary */}
-          {charges.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-slate-200 flex justify-between items-center text-sm">
-              <span className="text-slate-500">
-                器材總價 <span className="font-mono font-bold text-slate-700">{formatCurrency(baseSubtotal)}</span>
-              </span>
-              <span className="text-slate-800 font-bold">
-                檔期合計 <span className="font-mono text-lg text-primary-600">{formatCurrency(calcGrandSubtotal(baseSubtotal, charges))}</span>
-              </span>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Equipment Sections */}
-        {CATEGORIES.map(category => (
-          <div key={category.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {CATEGORIES.map(category => {
+          if (project.pricing && category.id === 'crew') return null;
+          return (
+            <div key={category.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className={`px-6 py-4 flex justify-between items-center ${category.bg} border-b border-slate-100`}>
               <h3 className={`text-lg font-bold ${category.color} flex items-center gap-2`}>
                 {category.label}
@@ -840,8 +993,10 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                 <div className="col-span-2">規格/備註 (Spec)</div>
                 <div className="col-span-1 text-center">數量</div>
                 <div className="col-span-1 text-center">單位</div>
-                <div className="col-span-2 text-right">客報單價</div>
-                <div className="col-span-2 text-right">成本/利潤</div>
+                <div className="col-span-2 text-right">{project.pricing ? '客報單價 (基準)' : '客報單價'}</div>
+                <div className="col-span-2 text-right" title={project.pricing ? '在階段計價架構下，此成本代表專案租賃之全場實際單位成本（不隨客戶天數或折率縮放）' : undefined}>
+                  {project.pricing ? '整檔成本' : '成本/利潤'}
+                </div>
                 <div className="col-span-1 text-center">設定</div>
               </div>
 
@@ -938,10 +1093,19 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                               </div>
                           </div>
                           <div className="col-span-2">
-                               <div className="md:hidden text-xs text-slate-400 font-bold mb-1">成本/利潤</div>
+                               <div className="md:hidden text-xs text-slate-400 font-bold mb-1">
+                                 {project.pricing ? '整檔成本' : '成本/利潤'}
+                               </div>
                                <div className="flex flex-col items-end">
-                                  <input type="number" value={item.costPrice ?? 0} onChange={e => updateItem(item.id, 'costPrice', parseFloat(e.target.value) || 0)} className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800" placeholder="成本" />
-                                  {item.price > 0 && (
+                                  <input
+                                    type="number"
+                                    value={item.costPrice ?? 0}
+                                    onChange={e => updateItem(item.id, 'costPrice', parseFloat(e.target.value) || 0)}
+                                    className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800"
+                                    placeholder="成本"
+                                    title={project.pricing ? '此器材專案租賃全場實際單位成本（不隨客戶天數縮放）' : '單日成本'}
+                                  />
+                                  {item.price > 0 && !item.internalOnly && (!project.pricing || project.pricing.rental.mode === 'itemized') && (
                                     <span className={`text-[10px] font-bold mt-0.5 ${getProfitColor(item)}`}>
                                       利潤 {calcProfitMargin(item).toFixed(0)}%
                                     </span>
@@ -1087,7 +1251,8 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* === Subcontract Management Section === */}
         <div className="bg-white rounded-xl border border-amber-200 shadow-sm overflow-hidden">
@@ -1160,32 +1325,43 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
                       {/* Item Picker */}
                       <div>
-                        <label className="block text-slate-500 text-xs font-bold uppercase mb-2">選擇發包項目</label>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="block text-slate-500 text-xs font-bold uppercase">選擇發包項目</label>
+                          <span className="text-xs text-slate-400 font-mono">已選 {sub.itemIds.length} 項</span>
+                        </div>
                         <div className="border border-slate-200 rounded-lg divide-y divide-slate-100 max-h-[300px] overflow-y-auto">
-                          {CATEGORIES.map(cat => {
-                            const catItems = project.items.filter(i => i.category === cat.id);
-                            if (catItems.length === 0) return null;
-                            return (
-                              <div key={cat.id}>
-                                <div className={`px-3 py-1.5 text-xs font-bold ${cat.color} ${cat.bg}`}>{cat.label}</div>
-                                {catItems.map(item => (
-                                  <label
-                                    key={item.id}
-                                    className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-amber-50/50 transition-colors ${sub.itemIds.includes(item.id) ? 'bg-amber-50' : ''}`}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={sub.itemIds.includes(item.id)}
-                                      onChange={() => toggleSubcontractItem(sub.id, item.id)}
-                                      className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
-                                    />
-                                    <span className="flex-1 text-sm text-slate-700">{item.name}</span>
-                                    <span className="text-xs text-slate-400">{item.quantity} {item.unit}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            );
-                          })}
+                          {(() => {
+                            const allResources = getProjectResources(project);
+                            return CATEGORIES.map(cat => {
+                              const catItems = allResources.filter(i => i.category === cat.id);
+                              if (catItems.length === 0) return null;
+                              return (
+                                <div key={cat.id}>
+                                  <div className={`px-3 py-1.5 text-xs font-bold ${cat.color} ${cat.bg}`}>{cat.label}</div>
+                                  {catItems.map(item => (
+                                    <label
+                                      key={item.id}
+                                      className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-amber-50/50 transition-colors ${sub.itemIds.includes(item.id) ? 'bg-amber-50' : ''}`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={sub.itemIds.includes(item.id)}
+                                        onChange={() => toggleSubcontractItem(sub.id, item.id)}
+                                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm text-slate-700 font-medium truncate">{item.name || '未命名項目'}</div>
+                                        {item.note && (
+                                          <div className="text-[11px] text-slate-400 truncate">{item.note}</div>
+                                        )}
+                                      </div>
+                                      <span className="text-xs text-slate-400 font-mono shrink-0">{item.quantity} {item.unit}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -1198,14 +1374,13 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
         {/* Cost / Profit Summary */}
         {(() => {
-          const charges = project.periodCharges || [];
-          const base = calcBaseSubtotal(project.items);
-          const clientSubtotal = charges.length > 0 ? calcGrandSubtotal(base, charges) : base;
-          const clientTax = Math.round(clientSubtotal * project.taxRate);
-          const clientTotal = clientSubtotal + clientTax;
-          const costSum = project.items.reduce((acc, item) => acc + calcCostTotal(item), 0);
-          const costTax = Math.round(costSum * project.taxRate);
-          const costTotal = costSum + costTax;
+          const totals = calculateProject(project);
+          const clientSubtotal = totals.subtotal;
+          const clientTax = Math.round(totals.tax);
+          const clientTotal = totals.total;
+          const costSum = totals.costSubtotal;
+          const costTax = totals.costTax;
+          const costTotal = totals.costTotal;
           const grossProfit = clientSubtotal - costSum;
           const grossRate = clientSubtotal > 0 ? (grossProfit / clientSubtotal) * 100 : 0;
           const netProfit = clientTotal - costTotal;
@@ -1261,32 +1436,96 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   </div>
                 )}
 
-                {/* Per-category breakdown */}
-                <div className="mt-4 border-t border-slate-100 pt-4">
-                  <div className="text-xs font-bold text-slate-400 uppercase mb-2">分類利潤</div>
-                  <div className="space-y-1">
-                    {CATEGORIES.map(cat => {
-                      const catItems = project.items.filter(i => i.category === cat.id);
-                      if (catItems.length === 0) return null;
-                      const catClient = catItems.filter(i => !i.internalOnly).reduce((s, i) => s + calcClientTotal(i), 0);
-                      const catCost = catItems.reduce((s, i) => s + calcCostTotal(i), 0);
-                      const catProfit = catClient - catCost;
-                      const catRate = catClient > 0 ? (catProfit / catClient) * 100 : 0;
-                      return (
-                        <div key={cat.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
-                          <span className={`font-bold ${cat.color}`}>{cat.label}</span>
-                          <div className="flex items-center gap-4 font-mono text-xs">
-                            <span className="text-slate-400">客報 {formatCurrency(catClient)}</span>
-                            <span className="text-slate-400">成本 {formatCurrency(catCost)}</span>
-                            <span className={`font-bold ${catRate >= 20 ? 'text-emerald-600' : catRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
-                              {formatCurrency(catProfit)} ({catRate.toFixed(0)}%)
-                            </span>
+                {/* Breakdown: Structural for Stage Pricing, Category for Legacy */}
+                {project.pricing ? (
+                  <div className="mt-4 border-t border-slate-100 pt-4 space-y-3">
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">階段與租賃結構利潤</div>
+                    <div className="space-y-1.5">
+                      {/* Equipment Rental line */}
+                      {(() => {
+                        const rentalCost = project.items.reduce((s, i) => s + calcCostTotal(i), 0);
+                        const rentalProfit = totals.rentalSubtotal - rentalCost;
+                        const rentalRate = totals.rentalSubtotal > 0 ? (rentalProfit / totals.rentalSubtotal) * 100 : 0;
+                        const modeLabel =
+                          project.pricing.rental.mode === 'fixed'
+                            ? '固定包套租金'
+                            : project.pricing.rental.mode === 'periods'
+                            ? '依檔期指定計價'
+                            : '整檔器材明細加總';
+
+                        return (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-primary-700">器材租賃</span>
+                              <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                {modeLabel}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
+                              <span className="text-slate-500">客報 {formatCurrency(totals.rentalSubtotal)}</span>
+                              <span className="text-slate-400">成本 {formatCurrency(rentalCost)}</span>
+                              <span className={`font-bold ${rentalRate >= 20 ? 'text-emerald-600' : rentalRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {formatCurrency(rentalProfit)} ({rentalRate.toFixed(0)}%)
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })()}
+
+                      {/* Work Stages lines */}
+                      {project.pricing.stages.map(stage => {
+                        const st = calcWorkStage(stage);
+                        const profit = st.subtotal - st.costSubtotal;
+                        const rate = st.subtotal > 0 ? (profit / st.subtotal) * 100 : 0;
+
+                        return (
+                          <div key={stage.id} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-blue-700">{stage.name || '未命名階段'}</span>
+                              <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                {stage.pricingMode === 'fixed' ? '固定包套' : '細項加總'}
+                                {stage.displayMode === 'summary' && ' · 摘要呈現'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
+                              <span className="text-slate-500">客報 {formatCurrency(st.subtotal)}</span>
+                              <span className="text-slate-400">成本 {formatCurrency(st.costSubtotal)}</span>
+                              <span className={`font-bold ${rate >= 20 ? 'text-emerald-600' : rate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {formatCurrency(profit)} ({rate.toFixed(0)}%)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">分類利潤</div>
+                    <div className="space-y-1">
+                      {CATEGORIES.map(cat => {
+                        const catItems = project.items.filter(i => i.category === cat.id);
+                        if (catItems.length === 0) return null;
+                        const catClient = catItems.filter(i => !i.internalOnly).reduce((s, i) => s + calcClientTotal(i), 0);
+                        const catCost = catItems.reduce((s, i) => s + calcCostTotal(i), 0);
+                        const catProfit = catClient - catCost;
+                        const catRate = catClient > 0 ? (catProfit / catClient) * 100 : 0;
+                        return (
+                          <div key={cat.id} className="flex items-center justify-between text-sm py-1 px-2 rounded hover:bg-slate-50">
+                            <span className={`font-bold ${cat.color}`}>{cat.label}</span>
+                            <div className="flex items-center gap-4 font-mono text-xs">
+                              <span className="text-slate-400">客報 {formatCurrency(catClient)}</span>
+                              <span className="text-slate-400">成本 {formatCurrency(catCost)}</span>
+                              <span className={`font-bold ${catRate >= 20 ? 'text-emerald-600' : catRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {formatCurrency(catProfit)} ({catRate.toFixed(0)}%)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );

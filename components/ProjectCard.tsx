@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Project } from '../types';
-import { formatDateRange, formatCurrency, calcBaseSubtotal, calcGrandSubtotal } from '../utils/helpers';
+import { formatDateRange, formatCurrency, calculateProject } from '../utils/helpers';
 import { Edit, Trash2, FileText, List, Send, ChevronDown, BarChart3, Archive, RotateCcw } from 'lucide-react';
 
 interface ProjectCardProps {
@@ -23,11 +23,7 @@ export const ProjectCard: React.FC<ProjectCardProps> = ({ project, onEdit, onArc
     ? new Intl.DateTimeFormat('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(project.archivedAt))
     : '';
 
-  const baseSubtotal = calcBaseSubtotal(project.items);
-  const charges = project.periodCharges || [];
-  const totalAmount = charges.length > 0
-    ? calcGrandSubtotal(baseSubtotal, charges)
-    : baseSubtotal;
+  const totalAmount = calculateProject(project).subtotal;
 
   const subs = project.subcontracts || [];
 

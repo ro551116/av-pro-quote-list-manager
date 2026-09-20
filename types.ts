@@ -35,6 +35,54 @@ export interface EquipmentItem {
   subItems?: string[];    // Array of strings for accessories (e.g. ['HDMI Cable', 'Power Cord'])
 }
 
+export interface RentalPeriod extends PeriodCharge {
+  itemIds: string[];
+  units: number; // Explicit billable days/times; date ranges never multiply charges implicitly.
+}
+
+export interface EquipmentRental {
+  mode: 'itemized' | 'fixed' | 'periods';
+  fixedAmount: number;
+  startDate?: string;
+  endDate?: string;
+  periods: RentalPeriod[];
+}
+
+export interface StageItem {
+  id: string;
+  kind: 'labor' | 'transport' | 'equipment' | 'other';
+  name: string;
+  quantity: number;
+  unit: string;
+  duration: number;
+  durationUnit: string;
+  price: number;
+  costPrice: number;
+  note: string;
+  internalOnly?: boolean;
+  subItems?: string[];
+  category?: Category;
+}
+
+export interface WorkStage {
+  id: string;
+  name: string;
+  startDate?: string;
+  endDate?: string;
+  time?: string;
+  note?: string;
+  pricingMode: 'itemized' | 'fixed';
+  fixedAmount: number;
+  displayMode: 'detailed' | 'summary';
+  items: StageItem[];
+}
+
+export interface StagePricing {
+  version: 1;
+  rental: EquipmentRental;
+  stages: WorkStage[];
+}
+
 export interface SalesPerson {
   id: string;
   name: string;
@@ -72,6 +120,7 @@ export interface Project {
 
   period?: number; // 檔期（天數），保留向下相容
   periodCharges?: PeriodCharge[]; // 新：檔期費用陣列
+  pricing?: StagePricing; // Absent on historical quotes: retain their original calculation.
   items: EquipmentItem[];
   subcontracts?: Subcontract[];
   taxRate: number; // e.g., 0.05 for 5%
