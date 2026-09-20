@@ -341,13 +341,13 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
     <div className="flex flex-col h-full bg-slate-50 overflow-hidden relative text-slate-900">
 
       {/* --- Item Selection Modal --- */}
-      {activeCategoryModal && !(project.pricing && activeCategoryModal === 'crew') && (
+      {activeCategoryModal && (
         <div className="absolute inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex justify-center items-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-xl border border-slate-200 w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <PlusSquare size={20} className="text-primary-500"/>
-                選擇器材: {CATEGORIES.find(c => c.id === activeCategoryModal)?.label}
+                {activeCategoryModal === 'crew' ? '選擇工作團隊' : `選擇器材: ${CATEGORIES.find(c => c.id === activeCategoryModal)?.label}`}
               </h3>
               <button
                 onClick={() => setActiveCategoryModal(null)}
@@ -370,12 +370,18 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                     <Plus size={16} />
                   </div>
                   <div>
-                    <div className="font-bold text-slate-800">新增空白項目 (Add Empty)</div>
-                    <div className="text-xs text-slate-500">手動輸入器材名稱與規格</div>
+                    <div className="font-bold text-slate-800">
+                      {activeCategoryModal === 'crew' ? '新增空白人員／費用 (Add Empty)' : '新增空白項目 (Add Empty)'}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {activeCategoryModal === 'crew' ? '手動輸入人員職稱或費用名稱與說明' : '手動輸入器材名稱與規格'}
+                    </div>
                   </div>
                 </button>
                 <div className="my-3 border-t border-slate-200 relative">
-                   <span className="absolute left-1/2 -top-3 -translate-x-1/2 bg-slate-50 px-2 text-xs text-slate-400">或選擇標準器材</span>
+                   <span className="absolute left-1/2 -top-3 -translate-x-1/2 bg-slate-50 px-2 text-xs text-slate-400">
+                     {activeCategoryModal === 'crew' ? '或選擇標準工作團隊項目' : '或選擇標準器材'}
+                   </span>
                 </div>
                 {STANDARD_EQUIPMENT_OPTIONS.filter(i => i.category === activeCategoryModal).map((option, idx) => (
                   <button
@@ -746,7 +752,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                           </li>
                         ) : (
                           <li>
-                            <strong>檔期建立：</strong> 建立「進場」「活動」「撤場」，器材費用先放在「活動」，可再調整歸屬。
+                            <strong>檔期建立：</strong> 預設保留全場器材固定包價，後續可依需求自行新增「進場」、「活動」或「撤場」等檔期。
                           </li>
                         )}
                         <li>
@@ -971,9 +977,9 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
           </div>
         )}
 
-        {/* === Equipment Section === */}
+        {/* === Equipment & Crew Section === */}
         {(() => {
-          const eligibleCategories = CATEGORIES.filter(cat => !(project.pricing && cat.id === 'crew'));
+          const eligibleCategories = CATEGORIES;
           const populatedCategories = eligibleCategories.filter(cat => itemsByCategory(cat.id).length > 0);
           const emptyCategories = eligibleCategories.filter(cat => itemsByCategory(cat.id).length === 0);
 
@@ -984,7 +990,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                 <div>
                   <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                     <span className="w-1.5 h-6 bg-primary-500 rounded-full"></span>
-                    器材
+                    器材與工作團隊
                   </h3>
                 </div>
                 <div className="flex items-center gap-3">
@@ -995,7 +1001,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                       onChange={e => setShowEquipmentCost(e.target.checked)}
                       className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
                     />
-                    顯示器材成本
+                    顯示成本
                   </label>
                 </div>
               </div>
@@ -1017,21 +1023,34 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                         onClick={() => setActiveCategoryModal(category.id)}
                         className="flex items-center gap-1.5 text-xs sm:text-sm bg-white hover:bg-primary-50 text-slate-700 hover:text-primary-700 hover:border-primary-300 px-3.5 py-1.5 rounded-lg transition-all border border-slate-200 shadow-xs font-bold"
                       >
-                        <Plus size={15} /> 新增器材
+                        <Plus size={15} /> {category.id === 'crew' ? '新增人員／費用' : '新增器材'}
                       </button>
                     </div>
 
                     <div className="p-2 md:p-6">
                       {/* Header Row */}
                       <div className="hidden md:grid grid-cols-12 gap-4 text-xs font-bold text-slate-400 px-4 py-2 uppercase tracking-wider mb-2">
-                        <div className={showEquipmentCost ? 'col-span-3' : 'col-span-4'}>器材名稱</div>
-                        <div className={showEquipmentCost ? 'col-span-2' : 'col-span-3'}>規格/備註</div>
+                        <div className={showEquipmentCost ? 'col-span-3' : 'col-span-4'}>
+                          {category.id === 'crew' ? '人員／費用名稱' : '器材名稱'}
+                        </div>
+                        <div className={showEquipmentCost ? 'col-span-2' : 'col-span-3'}>
+                          {category.id === 'crew' ? '職稱/說明' : '規格/備註'}
+                        </div>
                         <div className="col-span-1 text-center">數量</div>
                         <div className="col-span-1 text-center">單位</div>
-                        <div className="col-span-2 text-right">{project.pricing ? '客報單價 (基準)' : '客報單價'}</div>
+                        <div className="col-span-2 text-right">
+                          {project.pricing ? (category.id === 'crew' ? '客報單價' : '客報單價 (基準)') : '客報單價'}
+                        </div>
                         {showEquipmentCost && (
-                          <div className="col-span-2 text-right" title={project.pricing ? '此成本代表整檔器材的實際單位成本，不隨客報天數或折率縮放' : undefined}>
-                            {project.pricing ? '整檔成本' : '成本/利潤'}
+                          <div
+                            className="col-span-2 text-right"
+                            title={
+                              project.pricing
+                                ? (category.id === 'crew' ? '人員或運輸項目的實際單位成本' : '此成本代表整檔器材的實際單位成本，不隨客報天數或折率縮放')
+                                : undefined
+                            }
+                          >
+                            {project.pricing ? (category.id === 'crew' ? '實際成本' : '整檔成本') : '成本/利潤'}
                           </div>
                         )}
                         <div className="col-span-1 text-center">設定</div>
@@ -1051,13 +1070,13 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                               )}
 
                               {/* Name */}
-                              <div className={`${showEquipmentCost ? 'col-span-3' : 'col-span-4'} flex items-center gap-2`}>
+                              <div className={`col-span-1 min-w-0 ${showEquipmentCost ? 'md:col-span-3' : 'md:col-span-4'} flex items-center gap-2`}>
                                 <div className="flex shrink-0 flex-col">
                                   <button
                                     type="button"
                                     onClick={() => moveItem(item.id, -1)}
                                     disabled={index === 0}
-                                    aria-label={`上移 ${item.name || '未命名器材'}`}
+                                    aria-label={`上移 ${item.name || (category.id === 'crew' ? '未命名人員' : '未命名器材')}`}
                                     title="上移"
                                     className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
                                   >
@@ -1067,7 +1086,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                     type="button"
                                     onClick={() => moveItem(item.id, 1)}
                                     disabled={index === categoryItems.length - 1}
-                                    aria-label={`下移 ${item.name || '未命名器材'}`}
+                                    aria-label={`下移 ${item.name || (category.id === 'crew' ? '未命名人員' : '未命名器材')}`}
                                     title="下移"
                                     className="p-1 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
                                   >
@@ -1075,14 +1094,16 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                   </button>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="md:hidden text-xs text-slate-400 font-bold mb-1">器材名稱</div>
+                                  <div className="md:hidden text-xs text-slate-400 font-bold mb-1">
+                                    {category.id === 'crew' ? '人員／費用名稱' : '器材名稱'}
+                                  </div>
                                   <input
                                     type="text"
                                     value={item.name}
                                     onChange={e => updateItem(item.id, 'name', e.target.value)}
-                                    aria-label="器材名稱"
+                                    aria-label={category.id === 'crew' ? '人員／費用名稱' : '器材名稱'}
                                     className={`w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-800 font-medium outline-none p-1 transition-all placeholder-slate-400 ${item.internalOnly ? 'text-slate-600' : ''}`}
-                                    placeholder="輸入器材名稱..."
+                                    placeholder={category.id === 'crew' ? '輸入人員職稱或費用名稱...' : '輸入器材名稱...'}
                                   />
                                   {!expandedItems.has(item.id) && item.subItems && item.subItems.length > 0 && (
                                     <div className="flex gap-1 mt-1 flex-wrap">
@@ -1096,20 +1117,22 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                               </div>
 
                               {/* Specs */}
-                              <div className={showEquipmentCost ? 'col-span-2' : 'col-span-3'}>
-                                 <div className="md:hidden text-xs text-slate-400 font-bold mt-2 mb-1">規格/備註</div>
+                              <div className={`col-span-1 min-w-0 ${showEquipmentCost ? 'md:col-span-2' : 'md:col-span-3'}`}>
+                                 <div className="md:hidden text-xs text-slate-400 font-bold mt-2 mb-1">
+                                   {category.id === 'crew' ? '職稱/說明' : '規格/備註'}
+                                 </div>
                                  <input
                                   type="text"
                                   value={item.note || ''}
                                   onChange={e => updateItem(item.id, 'note', e.target.value)}
-                                  aria-label={`${item.name || '項目'} 規格備註`}
+                                  aria-label={`${item.name || (category.id === 'crew' ? '項目' : '器材')} 規格備註`}
                                   className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-sm outline-none p-1 transition-all placeholder-slate-300"
-                                  placeholder="規格..."
+                                  placeholder={category.id === 'crew' ? '職稱說明...' : '規格...'}
                                 />
                               </div>
 
                               {/* Qty / Unit / Price / Cost */}
-                              <div className={`${showEquipmentCost ? 'grid grid-cols-5' : 'grid grid-cols-4'} md:contents gap-2 mt-2 md:mt-0`}>
+                              <div className={`${showEquipmentCost ? 'grid grid-cols-6' : 'grid grid-cols-4'} md:contents gap-2 mt-2 md:mt-0`}>
                                   <div className="col-span-1">
                                       <div className="md:hidden text-xs text-slate-400 font-bold mb-1">數量</div>
                                       <input
@@ -1130,7 +1153,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                         className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-slate-500 text-center text-sm outline-none p-1"
                                       />
                                   </div>
-                                  <div className={`${showEquipmentCost ? 'col-span-1 md:col-span-2' : 'col-span-2 md:col-span-2'}`}>
+                                  <div className="col-span-2">
                                        <div className="md:hidden text-xs text-slate-400 font-bold mb-1">客報單價</div>
                                        <div>
                                           {item.internalOnly ? (
@@ -1149,19 +1172,23 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                   {showEquipmentCost && (
                                     <div className="col-span-2 md:col-span-2">
                                          <div className="md:hidden text-xs text-slate-400 font-bold mb-1">
-                                           {project.pricing ? '整檔成本' : '成本/利潤'}
+                                           {project.pricing ? (category.id === 'crew' ? '實際成本' : '整檔成本') : '成本/利潤'}
                                          </div>
                                          <div className="flex flex-col items-end">
                                             <input
                                               type="number"
                                               value={item.costPrice ?? 0}
                                               onChange={e => updateItem(item.id, 'costPrice', parseFloat(e.target.value) || 0)}
-                                              aria-label={`${item.name || '項目'} 成本`}
+                                              aria-label={`${item.name || (category.id === 'crew' ? '項目' : '器材')} 成本`}
                                               className="w-full bg-transparent border-b border-transparent focus:border-primary-500 text-right font-mono outline-none p-1 text-slate-800"
                                               placeholder="成本"
-                                              title={project.pricing ? '整檔器材的實際單位成本，不隨客報天數縮放' : '單日成本'}
+                                              title={
+                                                project.pricing
+                                                  ? (category.id === 'crew' ? '人員或運輸項目的實際單位成本' : '整檔器材的實際單位成本，不隨客報天數縮放')
+                                                  : '單日成本'
+                                              }
                                             />
-                                            {item.price > 0 && !item.internalOnly && (!project.pricing || project.pricing.rental.mode === 'itemized') && (
+                                            {item.price > 0 && !item.internalOnly && (!project.pricing || category.id === 'crew' || project.pricing.rental.mode === 'itemized') && (
                                               <span className={`text-[10px] font-bold mt-0.5 ${getProfitColor(item)}`}>
                                                 利潤 {calcProfitMargin(item).toFixed(0)}%
                                               </span>
@@ -1176,8 +1203,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                 <button
                                   type="button"
                                   onClick={() => toggleExpandItem(item.id)}
-                                  aria-label={`詳細設定 ${item.name || '未命名器材'}`}
-                                  className={`p-1.5 rounded-full transition-colors ${expandedItems.has(item.id) || (item.subItems && item.subItems.length > 0) || item.internalOnly ? 'bg-primary-50 text-primary-600 border border-primary-100' : 'text-slate-400 hover:bg-slate-200'}`}
+                                  aria-label={`詳細設定 ${item.name || (category.id === 'crew' ? '未命名人員' : '未命名器材')}`}
                                   title="詳細設定 (內部清單/配件)"
                                 >
                                   {expandedItems.has(item.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -1185,7 +1211,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                 <button
                                   type="button"
                                   onClick={() => deleteItem(item.id)}
-                                  aria-label={`刪除 ${item.name || '未命名器材'}`}
+                                  aria-label={`刪除 ${item.name || (category.id === 'crew' ? '未命名人員' : '未命名器材')}`}
                                   className="text-slate-400 hover:text-red-500 p-1.5 rounded-full hover:bg-red-50 transition-colors"
                                   title="刪除"
                                 >
@@ -1213,10 +1239,12 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                         <div className="flex flex-col">
                                            <span className="flex items-center gap-2">
                                               <ListChecks size={14} className={item.internalOnly ? 'text-primary-600' : 'text-slate-400'} />
-                                              僅器材單顯示
+                                              {item.category === 'crew' ? '僅內部清單顯示' : '僅器材單顯示'}
                                            </span>
                                            <span className="text-[11px] opacity-70 font-normal leading-tight mt-0.5">
-                                             在報價單中隱藏此項目，僅在出庫清單中出現 (不計費)。
+                                             {item.category === 'crew'
+                                               ? '在報價單中隱藏此項目，僅在內部清單中出現 (不計費)。'
+                                               : '在報價單中隱藏此項目，僅在出庫清單中出現 (不計費)。'}
                                            </span>
                                         </div>
                                       </label>
@@ -1225,10 +1253,12 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                    {/* Right: Sub-items Editor */}
                                    <div className="md:w-3/4 pl-0 md:pl-2">
                                       <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1 mb-3">
-                                         <Tag size={14} /> 器材清單細項
+                                         <Tag size={14} /> {item.category === 'crew' ? '工作細項與備註' : '器材清單細項'}
                                       </label>
                                       <p className="text-[11px] text-slate-400 mb-2">
-                                         在此輸入線材、配件等細項。這些內容將以條列式顯示於「器材清單」中，報價單則顯示為「如附件」。
+                                         {item.category === 'crew'
+                                           ? '在此輸入人員相關費用或備註細項。這些內容將以條列式顯示於清單中。'
+                                           : '在此輸入線材、配件等細項。這些內容將以條列式顯示於「器材清單」中，報價單則顯示為「如附件」。'}
                                       </p>
                                       <div className="flex gap-2 mb-3">
                                          <input
@@ -1242,7 +1272,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                                   setCustomSubItemInput('');
                                                }
                                             }}
-                                            placeholder="輸入細項名稱 (例如: HDMI線 3m)..."
+                                            placeholder={item.category === 'crew' ? '輸入細項名稱 (例如: 前一天進場、便當費)...' : '輸入細項名稱 (例如: HDMI線 3m)...'}
                                             aria-label="輸入細項名稱"
                                             className="flex-1 bg-white border border-slate-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 outline-none shadow-sm"
                                          />
@@ -1288,7 +1318,9 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
                                       {/* Quick Suggestions */}
                                       <div className="bg-slate-100 p-2.5 rounded-lg border border-slate-200">
-                                         <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">快速加入常用配件</p>
+                                         <p className="text-[10px] text-slate-400 font-bold uppercase mb-2">
+                                            {item.category === 'crew' ? '快速加入常用細項' : '快速加入常用配件'}
+                                         </p>
                                          <div className="flex flex-wrap gap-2">
                                             {ACCESSORY_SUGGESTIONS[item.category]?.map((sugg, i) => (
                                                <button
@@ -1320,7 +1352,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
                       <Plus size={14} className="text-primary-600" />
-                      {populatedCategories.length === 0 ? '選擇類別以新增器材' : '新增其他類別器材'}
+                      {populatedCategories.length === 0 ? '選擇類別以新增器材或團隊' : '新增其他類別器材或團隊'}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1382,6 +1414,13 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
                     <div className="text-xs text-slate-500 font-bold uppercase mb-1">未稅合計</div>
                     <div className="text-xl font-mono font-bold text-slate-800">{formatCurrency(clientSubtotal)}</div>
+                    {project.pricing && (totals.crewSubtotal > 0 || totals.stagesSubtotal > 0) && (
+                      <div className="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-2">
+                        <span>器材 {formatCurrency(totals.rentalSubtotal)}</span>
+                        {totals.crewSubtotal > 0 && <span>團隊 {formatCurrency(totals.crewSubtotal)}</span>}
+                        {totals.stagesSubtotal > 0 && <span>檔期 {formatCurrency(totals.stagesSubtotal)}</span>}
+                      </div>
+                    )}
                   </div>
 
                   <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
@@ -1465,11 +1504,13 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                       {/* Structural / Category Breakdown */}
                       {project.pricing ? (
                         <div className="border-t border-slate-100 pt-4 space-y-3">
-                        <div className="text-xs font-bold text-slate-400 uppercase mb-2">器材與階段利潤</div>
+                        <div className="text-xs font-bold text-slate-400 uppercase mb-2">器材、團隊與階段利潤</div>
                           <div className="space-y-1.5">
                             {/* Equipment Rental line */}
                             {(() => {
-                              const rentalCost = project.items.reduce((s, i) => s + calcCostTotal(i), 0);
+                              const rentalCost = project.items
+                                .filter(i => i.category !== 'crew')
+                                .reduce((s, i) => s + calcCostTotal(i), 0);
                               const rentalProfit = totals.rentalSubtotal - rentalCost;
                               const rentalRate = totals.rentalSubtotal > 0 ? (rentalProfit / totals.rentalSubtotal) * 100 : 0;
                               const modeLabel =
@@ -1492,6 +1533,34 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
                                     <span className="text-slate-400">成本 {formatCurrency(rentalCost)}</span>
                                     <span className={`font-bold ${rentalRate >= 20 ? 'text-emerald-600' : rentalRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
                                       {formatCurrency(rentalProfit)} ({rentalRate.toFixed(0)}%)
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Standalone Crew line */}
+                            {(() => {
+                              const crewItems = project.items.filter(i => i.category === 'crew');
+                              if (crewItems.length === 0 && totals.crewSubtotal === 0 && totals.crewCostSubtotal === 0) return null;
+                              const crewRevenue = totals.crewSubtotal;
+                              const crewCost = totals.crewCostSubtotal;
+                              const crewProfit = crewRevenue - crewCost;
+                              const crewRate = crewRevenue > 0 ? (crewProfit / crewRevenue) * 100 : 0;
+
+                              return (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between text-sm py-2 px-3 rounded-lg bg-slate-50 border border-slate-100 gap-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-blue-700">工作團隊</span>
+                                    <span className="text-[11px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                      人員與運輸
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 font-mono text-xs self-end sm:self-auto">
+                                    <span className="text-slate-500">客報 {formatCurrency(crewRevenue)}</span>
+                                    <span className="text-slate-400">成本 {formatCurrency(crewCost)}</span>
+                                    <span className={`font-bold ${crewRate >= 20 ? 'text-emerald-600' : crewRate >= 10 ? 'text-amber-600' : 'text-red-600'}`}>
+                                      {formatCurrency(crewProfit)} ({crewRate.toFixed(0)}%)
                                     </span>
                                   </div>
                                 </div>

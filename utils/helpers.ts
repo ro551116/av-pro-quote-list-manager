@@ -129,8 +129,17 @@ export const calcRentalPeriod = (items: EquipmentItem[], period: RentalPeriod): 
 export const calculateProject = (project: Project) => {
   let rentalSubtotal = 0;
   let stagesSubtotal = 0;
+  let crewSubtotal = 0;
+  let crewCostSubtotal = 0;
   let costSubtotal = 0;
-  for (const item of project.items) costSubtotal += calcCostTotal(item);
+  for (const item of project.items) {
+    const cost = calcCostTotal(item);
+    costSubtotal += cost;
+    if (project.pricing && item.category === 'crew') {
+      crewCostSubtotal += cost;
+      if (!item.internalOnly) crewSubtotal += calcClientTotal(item);
+    }
+  }
   if (project.pricing) {
     const { rental, stages } = project.pricing;
     if (rental.mode === 'fixed') rentalSubtotal = rental.fixedAmount;
@@ -152,11 +161,11 @@ export const calculateProject = (project: Project) => {
       ? calcGrandSubtotal(base, project.periodCharges)
       : base;
   }
-  const subtotal = rentalSubtotal + stagesSubtotal;
+  const subtotal = rentalSubtotal + crewSubtotal + stagesSubtotal;
   const tax = subtotal * project.taxRate;
   const costTax = Math.round(costSubtotal * project.taxRate);
   return {
-    rentalSubtotal, stagesSubtotal, subtotal, costSubtotal, tax,
+    rentalSubtotal, stagesSubtotal, crewSubtotal, crewCostSubtotal, subtotal, costSubtotal, tax,
     total: subtotal + tax, costTax, costTotal: costSubtotal + costTax,
   };
 };

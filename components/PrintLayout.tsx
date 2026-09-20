@@ -51,6 +51,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
   const {
     rentalSubtotal,
     stagesSubtotal,
+    crewSubtotal,
+    crewCostSubtotal,
     subtotal,
     costSubtotal: calculatedCostSubtotal,
     tax,
@@ -418,6 +420,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
               {project.pricing ? (
                 <StagePricingCompactTable
                   project={project}
+                  crewSubtotal={crewSubtotal}
                 />
               ) : (
                 <div className="w-full mb-2">
@@ -714,6 +717,7 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   <StagePricingQuoteScheduleTable
                     project={project}
                     nextIndex={() => ++itemCounter}
+                    crewSubtotal={crewSubtotal}
                   />
                 </>
               ) : isCost && project.pricing ? (
@@ -721,6 +725,8 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                   project={project}
                   rentalSubtotal={rentalSubtotal}
                   stagesSubtotal={stagesSubtotal}
+                  crewSubtotal={crewSubtotal}
+                  crewCostSubtotal={crewCostSubtotal}
                   subtotal={subtotal}
                   costSubtotal={costSubtotal}
                   tax={tax}

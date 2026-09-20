@@ -11,11 +11,13 @@ import {
   calcRentalPeriod,
   formatDateRange,
   getScheduleRows,
+  calculateProject,
 } from '../utils/helpers';
 
 interface QuoteTableProps {
   project: Project;
   nextIndex: () => number;
+  crewSubtotal?: number;
 }
 
 // Specifications are reference-only; all payable charges appear under their period.
@@ -92,10 +94,12 @@ const QuoteLine: React.FC<{
   </tr>
 );
 
-export const StagePricingQuoteScheduleTable: React.FC<QuoteTableProps> = ({ project, nextIndex }) => {
+export const StagePricingQuoteScheduleTable: React.FC<QuoteTableProps> = ({ project, nextIndex, crewSubtotal }) => {
   if (!project.pricing) return null;
   const rows = getQuoteScheduleRows(project);
-  if (!rows.length) return null;
+  const visibleCrewItems = project.items.filter(item => !item.internalOnly && item.category === 'crew');
+  if (!rows.length && !visibleCrewItems.length) return null;
+  const resolvedCrewSubtotal = crewSubtotal ?? calculateProject(project).crewSubtotal;
   return (
     <table className="w-full table-fixed border-collapse border border-black text-[13px] mb-3">
       <caption className="pb-1 text-left text-sm font-bold">檔期與項目</caption>
@@ -152,13 +156,40 @@ export const StagePricingQuoteScheduleTable: React.FC<QuoteTableProps> = ({ proj
           </tbody>
         );
       })}
+        {visibleCrewItems.length > 0 && (
+          <tbody>
+            <tr className="bg-gray-100 break-after-avoid print:print-color-adjust-exact">
+              <th colSpan={5} className="border border-black px-2 py-1.5 text-left">
+                工作團隊
+              </th>
+            </tr>
+            {visibleCrewItems.map(item => (
+              <QuoteLine
+                key={item.id}
+                index={nextIndex()}
+                name={item.name}
+                quantity={`${item.quantity} ${item.unit}`}
+                price={item.price}
+                amount={calcClientTotal(item)}
+                note={[item.note, item.subItems?.length ? '如附件' : ''].filter(Boolean).join(' · ')}
+              />
+            ))}
+            <tr className="break-inside-avoid font-bold">
+              <td colSpan={4} className="border border-black px-2 py-1.5 text-right">工作團隊小計（未稅）</td>
+              <td className="border border-black px-2 py-1.5 text-right font-mono">{formatCurrency(resolvedCrewSubtotal)}</td>
+            </tr>
+          </tbody>
+        )}
     </table>
   );
 };
 
-export const StagePricingCompactTable: React.FC<{ project: Project }> = ({ project }) => {
+export const StagePricingCompactTable: React.FC<{ project: Project; crewSubtotal?: number }> = ({ project, crewSubtotal }) => {
   if (!project.pricing) return null;
   const rows = getQuoteScheduleRows(project);
+  const visibleCrewItems = project.items.filter(item => !item.internalOnly && item.category === 'crew');
+  if (!rows.length && !visibleCrewItems.length) return null;
+  const resolvedCrewSubtotal = crewSubtotal ?? calculateProject(project).crewSubtotal;
   return (
     <table className="w-full table-fixed border-collapse border border-black text-[13px] mb-2">
       <thead>
@@ -183,6 +214,16 @@ export const StagePricingCompactTable: React.FC<{ project: Project }> = ({ proje
             <td className="border border-black px-2 py-2 text-right font-mono font-bold">{formatCurrency(row.total)}</td>
           </tr>
         ))}
+        {visibleCrewItems.length > 0 && (
+          <tr key="crew" className="break-inside-avoid">
+            <td className="border border-black py-2 text-center">{rows.length + 1}</td>
+            <td className="border border-black px-2 py-2 font-bold">工作團隊</td>
+            <td className="border border-black px-2 py-2">
+              如附件
+            </td>
+            <td className="border border-black px-2 py-2 text-right font-mono font-bold">{formatCurrency(resolvedCrewSubtotal)}</td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
@@ -198,6 +239,8 @@ interface CostProps {
   total: number;
   costTax: number;
   costTotal: number;
+  crewSubtotal: number;
+  crewCostSubtotal: number;
 }
 
 /**
@@ -216,6 +259,8 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
   total,
   costTax,
   costTotal,
+  crewSubtotal,
+  crewCostSubtotal,
 }) => {
   if (!project.pricing) return null;
   const { rental, stages } = project.pricing;
@@ -224,10 +269,13 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
   const isPeriodsRental = rental.mode === 'periods';
   const isItemizedRental = rental.mode === 'itemized';
 
+  const equipmentItems = project.items.filter(item => item.category !== 'crew');
   let equipmentCostSubtotal = 0;
-  for (const item of project.items) {
+  for (const item of equipmentItems) {
     equipmentCostSubtotal += calcCostTotal(item);
   }
+
+  const crewItems = project.items.filter(item => item.category === 'crew');
 
   let stagesCostSubtotal = 0;
   for (const stage of stages) {
@@ -277,9 +325,9 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
             </tr>
           </thead>
           <tbody>
-            {project.items.map(item => {
+            {equipmentItems.map(item => {
               itemCounter++;
-              const clientTot = item.internalOnly || item.category === 'crew' ? 0 : calcClientTotal(item);
+              const clientTot = item.internalOnly ? 0 : calcClientTotal(item);
               const costTot = calcCostTotal(item);
               const profit = clientTot - costTot;
               const margin = clientTot > 0 ? (profit / clientTot) * 100 : 0;
@@ -370,6 +418,100 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
           </tfoot>
         </table>
       </div>
+      {/* 2. Crew Section */}
+      {crewItems.length > 0 && (
+        <div className="mb-6">
+          <div className="font-bold border-t-2 border-black border-l border-r bg-slate-800 text-white px-2 py-1 text-sm print:bg-slate-800 print:text-white print:print-color-adjust-exact flex justify-between items-center">
+            <span>工作團隊成本明細</span>
+            <span className="text-xs font-normal text-slate-200">獨立計費</span>
+          </div>
+
+          <table className="w-full text-[13px] table-fixed border-collapse border border-black">
+            <thead className="bg-white text-center">
+              <tr>
+                <th className="border border-black py-1 w-[5%] font-medium">編號</th>
+                <th className="border border-black py-1 w-[25%] font-medium text-left px-2">職稱／項目</th>
+                <th className="border border-black py-1 w-[8%] font-medium">數量</th>
+                <th className="border border-black py-1 w-[10%] font-medium text-right px-2">客報單價</th>
+                <th className="border border-black py-1 w-[12%] font-medium text-right px-2">客報金額</th>
+                <th className="border border-black py-1 w-[10%] font-medium text-right px-2">成本單價</th>
+                <th className="border border-black py-1 w-[12%] font-medium text-right px-2">成本金額</th>
+                <th className="border border-black py-1 w-[11%] font-medium text-right px-2">利潤</th>
+                <th className="border border-black py-1 w-[7%] font-medium">利潤率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {crewItems.map((item, idx) => {
+                const clientTot = item.internalOnly ? 0 : calcClientTotal(item);
+                const costTot = calcCostTotal(item);
+                const profit = clientTot - costTot;
+                const margin = clientTot > 0 ? (profit / clientTot) * 100 : 0;
+
+                return (
+                  <tr key={item.id} className="break-inside-avoid">
+                    <td className="border border-black py-1.5 text-center align-top font-mono">
+                      {idx + 1}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 align-top font-bold">
+                      {item.name}
+                      {item.internalOnly && (
+                        <span className="ml-1 text-xs bg-slate-200 text-slate-700 px-1 py-0.5 rounded font-normal">
+                          內部專用
+                        </span>
+                      )}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-center align-top">
+                      {item.quantity} {item.unit}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-right align-top font-mono">
+                      {formatCurrency(item.price)}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-right align-top font-mono font-bold">
+                      {formatCurrency(clientTot)}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-right align-top font-mono">
+                      {formatCurrency(item.costPrice || 0)}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-right align-top font-mono">
+                      {formatCurrency(costTot)}
+                    </td>
+                    <td className="border border-black py-1.5 px-2 text-right align-top font-mono font-bold">
+                      {formatCurrency(profit)}
+                    </td>
+                    <td
+                      className={`border border-black py-1.5 px-2 text-center align-top font-bold ${
+                        margin >= 30 ? 'text-emerald-700' : margin >= 10 ? 'text-amber-700' : 'text-red-600'
+                      }`}
+                    >
+                      {margin.toFixed(0)}%
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 border-t-2 border-black font-bold print:bg-slate-50 print:print-color-adjust-exact text-[13px]">
+                <td colSpan={3} className="border border-black py-2 px-3 text-right">
+                  工作團隊收入合計（未稅）
+                </td>
+                <td
+                  colSpan={3}
+                  className="border border-black py-2 px-3 text-left font-mono text-sm text-slate-900"
+                >
+                  {formatCurrency(crewSubtotal)}
+                </td>
+                <td className="border border-black py-2 px-2 text-right">成本合計</td>
+                <td
+                  colSpan={2}
+                  className="border border-black py-2 px-2 text-right font-mono text-sm text-slate-900"
+                >
+                  {formatCurrency(crewCostSubtotal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
 
       {/* 2. Stages Cost Sections (all stage line items shown, independent of displayMode) */}
       <div className="mb-6">
@@ -541,6 +683,18 @@ export const StagePricingCostTable: React.FC<CostProps> = ({
               <td className="py-2 px-3 font-bold">器材成本合計（未稅）</td>
               <td className="py-2 px-3 text-right font-mono">{formatCurrency(equipmentCostSubtotal)}</td>
             </tr>
+            {(crewSubtotal > 0 || crewCostSubtotal > 0 || crewItems.length > 0) && (
+              <>
+                <tr className="border border-black bg-slate-50 print:bg-slate-50 print:print-color-adjust-exact">
+                  <td className="py-2 px-3 font-bold">工作團隊收入（未稅）</td>
+                  <td className="py-2 px-3 text-right font-mono font-bold">{formatCurrency(crewSubtotal)}</td>
+                </tr>
+                <tr className="border border-black">
+                  <td className="py-2 px-3 font-bold">工作團隊成本合計（未稅）</td>
+                  <td className="py-2 px-3 text-right font-mono">{formatCurrency(crewCostSubtotal)}</td>
+                </tr>
+              </>
+            )}
             <tr className="border border-black bg-slate-50 print:bg-slate-50 print:print-color-adjust-exact">
               <td className="py-2 px-3 font-bold">各階段工程收入（未稅）</td>
               <td className="py-2 px-3 text-right font-mono font-bold">{formatCurrency(stagesSubtotal)}</td>

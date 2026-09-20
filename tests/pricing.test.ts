@@ -42,6 +42,36 @@ test('empty schedules omit placeholder fees without hiding free customer equipme
   assert.equal(calculateProject(quote).subtotal, 0);
 });
 
+test('standalone work team is billed once without stages and survives equipment or stage packages', () => {
+  const quote = project();
+  quote.pricing = createStagePricing();
+  quote.items.push(
+    { ...equipment('team', 1200, 700), category: 'crew', quantity: 3 },
+    { ...equipment('private-team', 9999, 250), category: 'crew', quantity: 2, internalOnly: true },
+  );
+  assert.equal(calculateProject(quote).subtotal, 11600);
+  assert.equal(calculateProject(quote).costSubtotal, 4600);
+
+  quote.pricing.stages = [stage()];
+  quote.pricing.rental.fixedAmount = 12000;
+  quote.pricing.rental.periods = [{
+    id: 'equipment-days', label: '器材費用', type: 'rate', value: 0.5, units: 3,
+    itemIds: ['audio', 'team', 'private-team'],
+  }];
+  for (const [mode, rentalAmount] of [['itemized', 8000], ['fixed', 12000], ['periods', 12000]] as const) {
+    quote.pricing.rental.mode = mode;
+    const before = structuredClone(quote);
+    const totals = calculateProject(quote);
+    assert.equal(totals.subtotal, rentalAmount + 30000 + 3600);
+    assert.equal(totals.total, (rentalAmount + 30000 + 3600) * 1.05);
+    assert.equal(totals.crewSubtotal, 3600);
+    assert.equal(totals.crewCostSubtotal, 2600);
+    assert.equal(totals.costSubtotal, 24600);
+    assert.equal(getScheduleRows(quote).reduce((sum, row) => sum + row.total, 0) + totals.crewSubtotal, totals.subtotal);
+    assert.deepEqual(quote, before);
+  }
+});
+
 test('selected rental periods exclude people, hidden equipment and duplicate selections', () => {
   const quote = project();
   quote.items.push({ ...equipment('person', 5000, 3000), category: 'crew' });
@@ -87,7 +117,7 @@ test('rental is billed once, empty event staffing is free, and teardown costs re
   }];
   const totals = calculateProject(quote);
   assert.deepEqual(totals, {
-    rentalSubtotal: 12000, stagesSubtotal: 52000, subtotal: 64000,
+    rentalSubtotal: 12000, stagesSubtotal: 52000, crewSubtotal: 0, crewCostSubtotal: 0, subtotal: 64000,
     costSubtotal: 37000, tax: 3200, total: 67200, costTax: 1850, costTotal: 38850,
   });
   quote.pricing.rental.mode = 'fixed';

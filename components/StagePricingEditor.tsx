@@ -410,7 +410,7 @@ export const StagePricingEditor: React.FC<StagePricingEditorProps> = ({ project,
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-semibold text-slate-900">
           檔期設定{' '}
-          <span className="ml-2 text-sm font-normal">合計 {formatCurrency(totals.subtotal)}</span>
+          <span className="ml-2 text-sm font-normal">合計 {formatCurrency(totals.rentalSubtotal + totals.stagesSubtotal)}</span>
         </h3>
         <button type="button" onClick={() => handleAddStage()} className={actionClass}>
           <Plus size={14} /> 新增檔期

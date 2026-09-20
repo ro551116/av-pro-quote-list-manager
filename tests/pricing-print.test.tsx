@@ -4,7 +4,12 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Project } from '../types';
 import { calculateProject } from '../utils/helpers';
-import { StagePricingCompactTable, StagePricingQuoteEquipmentTable, StagePricingQuoteScheduleTable } from '../components/StagePricingPrint';
+import {
+  StagePricingCompactTable,
+  StagePricingCostTable,
+  StagePricingQuoteEquipmentTable,
+  StagePricingQuoteScheduleTable,
+} from '../components/StagePricingPrint';
 
 const quote = (): Project => ({
   id: 'print', name: 'quote', client: '', date: '', location: '', contact: '',
@@ -106,5 +111,89 @@ test('linked equipment and work share payable period totals in both quote format
       assert.equal(groups.length, 2, 'Dormant period fees and empty stages stay absent');
       assert.doesNotMatch(detailed + compact, /SELECTED_EQUIPMENT|FIXED_EQUIPMENT|UNASSIGNED_FEE|ADJUSTMENT/);
     }
+  }
+});
+
+test('standalone public, internal, and free crew entries bill once, preserve quote privacy, and reconcile in cost reports across fee modes', () => {
+  const project = quote();
+  project.items = [
+    { id: 'speaker', category: 'audio', name: 'PUBLIC_EQUIPMENT', quantity: 2, unit: '台', price: 500, costPrice: 200, note: '', subItems: [] },
+    { id: 'crew-lead', category: 'crew', name: 'PUBLIC_CREW_LEAD', quantity: 2, unit: '人', price: 3000, costPrice: 2200, note: '現場主控', subItems: ['執照'] },
+    { id: 'crew-internal', category: 'crew', name: 'INTERNAL_CREW', quantity: 1, unit: '人', price: 9999, costPrice: 1500, note: '內部監製', subItems: [], internalOnly: true },
+    { id: 'crew-trainee', category: 'crew', name: 'FREE_CREW_ASSISTANT', quantity: 1, unit: '人', price: 0, costPrice: 800, note: '實習助理', subItems: [] },
+  ];
+  const [setup, event] = project.pricing!.stages;
+  setup.pricingMode = 'fixed';
+  setup.fixedAmount = 4000;
+  setup.displayMode = 'detailed';
+  setup.items = [{ id: 'setup-labor', kind: 'labor', name: 'SETUP_HAND', quantity: 2, unit: '人', duration: 1, durationUnit: '天', price: 1500, costPrice: 1000, note: '' }];
+  event.displayMode = 'detailed';
+  event.items = [{ id: 'event-labor', kind: 'labor', name: 'EVENT_TECH', quantity: 1, unit: '人', duration: 1, durationUnit: '天', price: 2000, costPrice: 1200, note: '' }];
+
+  project.pricing!.rental.fixedAmount = 6000;
+  project.pricing!.rental.periods = [
+    { id: 'p1', label: '活動租賃', type: 'rate', value: 1.0, units: 1, itemIds: ['speaker'], stageId: event.id },
+  ];
+
+  // Equipment reference table never duplicates crew
+  const reference = renderToStaticMarkup(<StagePricingQuoteEquipmentTable project={project} nextIndex={() => 1} />);
+  assert.match(reference, /PUBLIC_EQUIPMENT/);
+  assert.doesNotMatch(reference, /PUBLIC_CREW_LEAD|INTERNAL_CREW|FREE_CREW_ASSISTANT/);
+
+  for (const mode of ['periods', 'fixed', 'itemized'] as const) {
+    project.pricing!.rental.mode = mode;
+    const detailed = renderToStaticMarkup(<StagePricingQuoteScheduleTable project={project} nextIndex={() => 1} />);
+    const compact = renderToStaticMarkup(<StagePricingCompactTable project={project} />);
+
+    // Customer detailed and compact groups and financial consistency
+    const groups = [...detailed.matchAll(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/g)].map(group => group[1]);
+    const groupTotals = groups.map(group => {
+      const values = amounts(group);
+      const subtotal = values.at(-1)!;
+      assert.equal(values.slice(0, -1).reduce((sum, value) => sum + value, 0), subtotal);
+      return subtotal;
+    });
+
+    const totals = calculateProject(project);
+    assert.equal(groupTotals.reduce((sum, value) => sum + value, 0), totals.subtotal);
+    assert.deepEqual(amounts(compact), groupTotals);
+
+    // Team subtotal is billed once (2 * 3000 + 1 * 0 = 6000) regardless of equipment rental mode or stage packages
+    const teamGroup = groups.at(-1)!;
+    assert.match(teamGroup, /工作團隊/);
+    assert.match(teamGroup, /PUBLIC_CREW_LEAD/);
+    assert.match(teamGroup, /FREE_CREW_ASSISTANT/);
+    assert.equal(groupTotals.at(-1), 6000);
+
+    // Privacy: customer quote never exposes internal crew or cost figures
+    const customerText = (detailed + compact).replace(/<[^>]*>/g, '');
+    assert.doesNotMatch(customerText, /INTERNAL_CREW|\$2,200|\$1,500|\$800|\$9,999/);
+
+    // Cost report reconciliation: shows actual costs including internal crew separately and reconciles totals
+    const costHtml = renderToStaticMarkup(
+      <StagePricingCostTable
+        project={project}
+        rentalSubtotal={totals.rentalSubtotal}
+        stagesSubtotal={totals.stagesSubtotal}
+        crewSubtotal={totals.crewSubtotal}
+        crewCostSubtotal={totals.crewCostSubtotal}
+        subtotal={totals.subtotal}
+        costSubtotal={totals.costSubtotal}
+        tax={totals.tax}
+        total={totals.total}
+        costTax={totals.costTax}
+        costTotal={totals.costTotal}
+      />
+    );
+    assert.match(costHtml, /工作團隊成本明細/);
+    assert.match(costHtml, /PUBLIC_CREW_LEAD/);
+    assert.match(costHtml, /INTERNAL_CREW/);
+    assert.match(costHtml, /FREE_CREW_ASSISTANT/);
+    assert.match(costHtml, /內部專用/);
+    assert.match(costHtml, /\$2,200/);
+    assert.match(costHtml, /\$1,500/);
+    assert.match(costHtml, /\$800/);
+    assert.match(costHtml, /工作團隊收入（未稅）/);
+    assert.match(costHtml, /工作團隊成本合計（未稅）/);
   }
 });
