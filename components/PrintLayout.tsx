@@ -411,9 +411,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                         </td>
                         <td className="border border-black py-2 px-2 align-middle font-bold">
                           {formatPeriodChargeLabel(charge)}
-                          {charge.type === 'rate' && (
-                            <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
-                          )}
                         </td>
                         <td className="border border-black py-2 px-2 align-middle text-xs"></td>
                         <td className="border border-black py-2 px-2 text-right align-middle font-mono font-bold">
@@ -841,9 +838,6 @@ export const PrintLayout: React.FC<PrintLayoutProps> = ({ type, project, salespe
                         <tr key={charge.id} className="break-inside-avoid">
                           <td className="border border-black py-2 px-2 font-bold">
                             {formatPeriodChargeLabel(charge)}
-                            {charge.type === 'rate' && (
-                              <span className="text-gray-500 font-normal ml-1">({Math.round(charge.value * 100)}%)</span>
-                            )}
                           </td>
                           <td className="border border-black py-2 px-2 text-right font-mono font-bold">
                             {formatCurrency(calcChargeAmount(charge, baseSubtotal))}

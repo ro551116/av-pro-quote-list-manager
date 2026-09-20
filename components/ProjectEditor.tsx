@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Project, EquipmentItem, Category, Subcontract, PeriodCharge, SalesPerson, Customer } from '../types';
 import { CATEGORIES, STANDARD_EQUIPMENT_OPTIONS, ACCESSORY_SUGGESTIONS, DEFAULT_PERIOD_PRESETS, DEFAULT_DAY_LABELS, DEFAULT_VALID_DAYS, PAYMENT_METHOD_PRESETS } from '../constants';
 import { generateId, calcClientTotal, calcCostTotal, calcProfitMargin, calcBaseSubtotal, calcChargeAmount, calcGrandSubtotal, formatCurrency, formatDateRange } from '../utils/helpers';
@@ -8,12 +8,79 @@ interface ProjectEditorProps {
   project: Project;
   customers?: Customer[];
   salespeople?: SalesPerson[];
-  onSave: (project: Project) => void;
-  onCancel: () => void;
+  onSave: (project: Project) => Promise<Project>;
+  onBack: () => void;
 }
 
-export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, customers = [], salespeople = [], onSave, onCancel }) => {
-  const [project, setProject] = useState<Project>(JSON.parse(JSON.stringify(initialProject)));
+export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialProject, customers = [], salespeople = [], onSave, onBack }) => {
+  const [project, setProject] = useState<Project>(() => structuredClone(initialProject));
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'pending' | 'saving' | 'error'>('saved');
+  const [leaving, setLeaving] = useState(false);
+  const latestProject = useRef(project);
+  const savedProject = useRef(project);
+  const saveCallback = useRef(onSave);
+  const pendingSave = useRef<Promise<boolean> | null>(null);
+  latestProject.current = project;
+  saveCallback.current = onSave;
+
+  // One request at a time: edits made during a save must be written after it.
+  const saveChanges = useCallback((): Promise<boolean> => {
+    if (pendingSave.current) return pendingSave.current;
+    const save = async () => {
+      while (latestProject.current !== savedProject.current) {
+        const snapshot = latestProject.current;
+        setSaveStatus('saving');
+        try {
+          const persisted = await saveCallback.current(snapshot);
+          savedProject.current = snapshot;
+          if (latestProject.current === snapshot) {
+            latestProject.current = persisted;
+            savedProject.current = persisted;
+            setProject(persisted);
+          } else if (
+            latestProject.current.client === snapshot.client &&
+            latestProject.current.customerId === snapshot.customerId
+          ) {
+            // Preserve newer edits while carrying forward a newly created customer ID.
+            latestProject.current = { ...latestProject.current, customerId: persisted.customerId };
+            setProject(latestProject.current);
+          }
+        } catch (error) {
+          console.error('Failed to save project', error);
+          setSaveStatus('error');
+          return false;
+        }
+      }
+      setSaveStatus('saved');
+      return true;
+    };
+    pendingSave.current = save().finally(() => { pendingSave.current = null; });
+    return pendingSave.current;
+  }, []);
+
+  useEffect(() => {
+    if (project === savedProject.current) return;
+    if (!pendingSave.current) setSaveStatus('pending');
+    const timer = window.setTimeout(() => { void saveChanges(); }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [project, saveChanges]);
+
+  useEffect(() => {
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (latestProject.current === savedProject.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnUnsaved);
+    return () => window.removeEventListener('beforeunload', warnUnsaved);
+  }, []);
+
+  const saveAndBack = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    if (await saveChanges()) onBack();
+    else setLeaving(false);
+  };
   const [activeCategoryModal, setActiveCategoryModal] = useState<Category | null>(null);
 
   // Track expanded items for detail editing
@@ -147,6 +214,23 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
       ...prev,
       items: prev.items.filter(item => item.id !== id)
     }));
+  };
+
+  const moveItem = (id: string, direction: -1 | 1) => {
+    setProject(prev => {
+      const index = prev.items.findIndex(item => item.id === id);
+      if (index < 0) return prev;
+      let target = index + direction;
+      while (target >= 0 && target < prev.items.length) {
+        if (prev.items[target].category === prev.items[index].category) {
+          const items = [...prev.items];
+          [items[index], items[target]] = [items[target], items[index]];
+          return { ...prev, items };
+        }
+        target += direction;
+      }
+      return prev;
+    });
   };
 
   // --- Subcontract CRUD ---
@@ -307,19 +391,28 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
       )}
 
       {/* --- Main Editor Header --- */}
-      <div className="bg-white p-4 border-b border-slate-200 flex justify-between items-center shrink-0 shadow-sm z-10">
+      <div className="bg-white p-4 border-b border-slate-200 flex flex-wrap gap-3 justify-between items-center shrink-0 shadow-sm z-10">
         <div className="flex items-center gap-3">
-          <button onClick={onCancel} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors">
+          <button onClick={saveAndBack} disabled={leaving} aria-label="儲存並返回" className="p-2 hover:bg-slate-100 rounded-full text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-50">
             <ArrowLeft size={20} />
           </button>
           <h2 className="text-xl font-bold text-slate-800">專案編輯</h2>
         </div>
-        <button
-          onClick={() => onSave(project)}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-primary-500/20 transition-all"
-        >
-          <Save size={18} /> 儲存專案
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <span role="status" aria-live="polite" className={`text-sm ${saveStatus === 'error' ? 'text-red-600' : 'text-slate-500'}`}>
+            {saveStatus === 'saved' ? '已自動儲存' : saveStatus === 'saving' ? '儲存中…' : saveStatus === 'pending' ? '等待儲存…' : '儲存失敗，變更尚未儲存'}
+          </span>
+          {saveStatus === 'error' && (
+            <button onClick={() => { void saveChanges(); }} className="text-sm text-red-700 underline">重試儲存</button>
+          )}
+          <button
+            onClick={saveAndBack}
+            disabled={leaving}
+            className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-primary-500/20 transition-all disabled:opacity-50"
+          >
+            <Save size={18} /> {leaving ? '儲存中…' : '儲存並返回'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">
@@ -753,7 +846,7 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
               </div>
 
               <div className="space-y-3">
-                {itemsByCategory(category.id).map(item => (
+                {itemsByCategory(category.id).map((item, index, categoryItems) => (
                   <div key={item.id} className={`bg-slate-50 p-3 rounded-lg border transition-all group ${item.internalOnly ? 'border-dashed border-slate-300 bg-slate-100/50' : 'border-slate-200 hover:border-primary-300 hover:shadow-sm'}`}>
 
                     {/* Main Row */}
@@ -768,6 +861,26 @@ export const ProjectEditor: React.FC<ProjectEditorProps> = ({ project: initialPr
 
                       {/* Name */}
                       <div className="col-span-3 flex items-center gap-2">
+                        <div className="flex shrink-0 flex-col">
+                          <button
+                            onClick={() => moveItem(item.id, -1)}
+                            disabled={index === 0}
+                            aria-label={`上移 ${item.name || '未命名器材'}`}
+                            title="上移"
+                            className="p-2 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                          <button
+                            onClick={() => moveItem(item.id, 1)}
+                            disabled={index === categoryItems.length - 1}
+                            aria-label={`下移 ${item.name || '未命名器材'}`}
+                            title="下移"
+                            className="p-2 rounded text-slate-500 hover:bg-slate-200 disabled:opacity-25 disabled:cursor-not-allowed"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                        </div>
                         <div className="flex-1">
                           <div className="md:hidden text-xs text-slate-400 font-bold mb-1">器材名稱</div>
                           <input

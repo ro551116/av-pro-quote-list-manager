@@ -263,7 +263,7 @@ const App: React.FC = () => {
       await ensureOk(response);
     } catch (error) {
       console.error('Failed to sync customer from project', error);
-      return existingCustomer ? { ...project, customerId: existingCustomer.id } : { ...project, customerId: '' };
+      throw error;
     }
 
     setCustomers(prev => {
@@ -275,25 +275,17 @@ const App: React.FC = () => {
     return { ...project, customerId: customerToSave.id };
   };
 
-  const handleSaveProject = async (updatedProject: Project) => {
+  const handleSaveProject = async (updatedProject: Project): Promise<Project> => {
     const syncedProject = await syncCustomerFromProject(updatedProject);
     const projectToSave = { ...syncedProject, updatedAt: Date.now() };
-    const previousProjects = projects;
+    const response = await fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(projectToSave),
+    });
+    await ensureOk(response);
     setProjects(prev => prev.map(p => p.id === projectToSave.id ? projectToSave : p));
-    setViewMode('dashboard');
-    setCurrentProjectId(null);
-
-    try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(projectToSave)
-      });
-      await ensureOk(response);
-    } catch (error) {
-      console.error('Failed to update project', error);
-      setProjects(previousProjects);
-    }
+    return projectToSave;
   };
 
   const handleDeleteProject = (id: string) => {
@@ -423,7 +415,7 @@ const App: React.FC = () => {
   }
 
   if (viewMode === 'editor' && currentProjectId) {
-    return <ProjectEditor project={getActiveProject()} customers={customers} salespeople={salespeople} onSave={handleSaveProject} onCancel={() => setViewMode('dashboard')} />;
+    return <ProjectEditor key={currentProjectId} project={getActiveProject()} customers={customers} salespeople={salespeople} onSave={handleSaveProject} onBack={() => { setViewMode('dashboard'); setCurrentProjectId(null); }} />;
   }
 
   if (viewMode === 'customers') {
