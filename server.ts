@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
@@ -292,8 +291,11 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
+  // Vite middleware for development. vite is a devDependency used only here, so it
+  // is imported on demand: a static import would load vite's whole dependency tree
+  // on every production start (seconds on Cloud Run) and fails where dev deps are omitted.
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
